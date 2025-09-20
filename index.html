@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SaaS BI Tool</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Tabulator.js -->
+    <link href="https://unpkg.com/tabulator-tables@5.5.2/dist/css/tabulator_modern.min.css" rel="stylesheet">
+    <script type="text/javascript" src="https://unpkg.com/tabulator-tables@5.5.2/dist/js/tabulator.min.js"></script>
+
+    <!-- Sortable.js for drag-and-drop tabs -->
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        .tabulator .tabulator-header,
+        .tabulator .tabulator-footer {
+            background-color: #f9fafb;
+            border-bottom-color: #e5e7eb;
+        }
+
+        .tabulator .tabulator-col-title {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #4b5563;
+        }
+
+        .tabulator .tabulator-row {
+            border-bottom-color: #f3f4f6;
+        }
+
+        .tabulator .tabulator-row:hover {
+            background-color: #f9fafb;
+        }
+
+        .tabulator .tabulator-cell {
+            padding: 12px 16px;
+        }
+
+        .column-item.dragging,
+        .sortable-ghost {
+            opacity: 0.5;
+            background: #e0f2fe;
+            border-style: dashed;
+        }
+
+        .column-item {
+            transition: transform 150ms ease, box-shadow 150ms ease;
+        }
+
+        .column-item:active {
+            transform: scale(0.98);
+            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25);
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #d1d5db;
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #9ca3af;
+        }
+
+        #main-grid {
+            position: relative;
+        }
+
+        #chat-panel {
+            transition: transform 250ms ease, opacity 250ms ease;
+        }
+
+        #chat-panel.chat-panel-hidden {
+            transform: translateX(calc(100% + 1rem));
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .column-drop-target {
+            border: 2px dashed #93c5fd;
+            background: #eff6ff;
+        }
+
+        .tabulator-col[draggable="true"] .tabulator-col-title {
+            cursor: grab;
+        }
+
+        .tabulator-col[draggable="true"].is-drag-source {
+            opacity: 0.6;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-100 h-screen flex flex-col text-gray-800">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-4 min-w-0">
+            <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                    <h1 id="tab-title-display" class="text-lg font-semibold text-gray-800 cursor-pointer truncate"
+                        title="クリックして編集"></h1>
+                    <input type="text" id="tab-title-input"
+                        class="text-lg font-semibold border border-blue-400 rounded-md px-2 py-0.5 hidden w-full">
+                </div>
+                <div class="flex items-center gap-2">
+                    <p id="tab-description-display" class="text-sm text-gray-500 cursor-pointer truncate"
+                        title="クリックして編集"></p>
+                    <input type="text" id="tab-description-input"
+                        class="text-sm text-gray-500 border border-blue-400 rounded-md px-2 py-0.5 hidden w-full">
+                </div>
+            </div>
+        </div>
+        <div class="flex items-center gap-4">
+            <button id="save-button"
+                class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                保存
+            </button>
+            <button id="toggle-chat-btn"
+                class="p-2 rounded-md hover:bg-gray-100 text-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400"
+                title="AIチャットの表示/非表示">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="3" y1="12" x2="21" y2="12"></line>
+                    <line x1="3" y1="6" x2="21" y2="6"></line>
+                    <line x1="3" y1="18" x2="21" y2="18"></line>
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-grow grid grid-cols-[260px_1fr] gap-2 p-2 overflow-hidden" id="main-grid">
+        <!-- Left Sidebar: Column List -->
+        <aside class="bg-white rounded-lg border border-gray-200 flex flex-col">
+            <h2 class="text-sm font-semibold p-3 border-b border-gray-200 text-gray-700">カラム一覧</h2>
+            <div class="p-3 space-y-2 overflow-y-auto" id="column-list-wrapper">
+                <p class="text-xs text-gray-500 mb-2">カラムをドラッグして表に追加 / 表から削除</p>
+                <div id="column-list" class="space-y-2"></div>
+                <p id="column-list-empty" class="text-xs text-gray-400 hidden">すべてのカラムが表に表示されています</p>
+            </div>
+        </aside>
+
+        <!-- Center: Data Table -->
+        <section class="bg-white rounded-lg border border-gray-200 flex flex-col overflow-hidden relative">
+            <div id="data-table-wrapper" class="flex-grow h-full">
+                <div id="data-table" class="flex-grow h-full"></div>
+            </div>
+
+            <!-- Right Sidebar: AI Chat -->
+            <aside id="chat-panel"
+                class="absolute top-4 right-4 w-80 max-w-full bg-white rounded-xl border border-gray-200 shadow-lg flex flex-col transition-all z-20">
+                <h2 class="text-sm font-semibold p-3 border-b border-gray-200 text-gray-700">AIチャット</h2>
+                <div class="flex-grow p-3 space-y-4 overflow-y-auto">
+                    <div class="flex items-start gap-2.5">
+                        <div
+                            class="flex flex-col w-full leading-1.5 p-3 border border-gray-200 bg-gray-100 rounded-e-xl rounded-es-xl">
+                            <p class="text-sm font-normal text-gray-900">こんにちは！どのようなデータ操作をご希望ですか？</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-2.5 justify-end">
+                        <div
+                            class="flex flex-col w-full leading-1.5 p-3 border border-gray-200 bg-blue-600 text-white rounded-s-xl rounded-ee-xl">
+                            <p class="text-sm font-normal">10月のデータだけ表示して</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="p-3 border-t border-gray-200 mt-auto">
+                    <div class="flex items-center">
+                        <input type="text"
+                            class="w-full bg-gray-100 border border-gray-200 rounded-l-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="メッセージを入力...">
+                        <button
+                            class="px-4 py-2 bg-blue-600 text-white rounded-r-lg text-sm font-medium hover:bg-blue-700">送信</button>
+                    </div>
+                </div>
+            </aside>
+        </section>
+    </main>
+
+    <!-- Bottom Tab Bar -->
+    <footer class="bg-white border-t border-gray-200 p-1 flex items-center gap-2 shrink-0">
+        <div class="relative">
+            <button id="tab-list-menu-btn" class="p-2 rounded-md hover:bg-gray-100 text-gray-600 focus:outline-none"
+                title="タブ一覧">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="3" y1="12" x2="21" y2="12"></line>
+                    <line x1="3" y1="6" x2="21" y2="6"></line>
+                    <line x1="3" y1="18" x2="21" y2="18"></line>
+                </svg>
+            </button>
+            <div id="tab-list-dropdown"
+                class="absolute bottom-full mb-2 left-0 bg-white border border-gray-200 rounded-lg shadow-lg w-60 hidden py-1 z-10">
+            </div>
+        </div>
+        <div id="tab-bar-container" class="flex items-center gap-1 overflow-x-auto flex-grow"></div>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            // --- Constants ---
+            const ALL_COLUMNS = [
+                { id: 'date', title: '日付', field: 'date', width: 140, headerFilter: 'input' },
+                { id: 'campaign', title: 'キャンペーン', field: 'campaign', minWidth: 180, headerFilter: 'input' },
+                { id: 'impressions', title: '表示回数', field: 'impressions', width: 120, hozAlign: 'right', sorter: 'number' },
+                { id: 'clicks', title: 'クリック数', field: 'clicks', width: 120, hozAlign: 'right', sorter: 'number' },
+                { id: 'ctr', title: 'CTR', field: 'ctr', width: 100, hozAlign: 'right', formatter: 'progress', formatterParams: { color: '#4f46e5' } },
+                { id: 'cost', title: '費用', field: 'cost', width: 120, hozAlign: 'right', sorter: 'number', formatter: 'money', formatterParams: { symbol: '¥' } },
+                { id: 'conversions', title: 'CV', field: 'conversions', width: 100, hozAlign: 'right', sorter: 'number' },
+                { id: 'media', title: '媒体', field: 'media', minWidth: 160, headerFilter: 'select', headerFilterParams: { values: true } },
+            ];
+
+            const COLUMN_LOOKUP = ALL_COLUMNS.reduce((acc, col) => {
+                acc[col.field] = col;
+                return acc;
+            }, {});
+
+            const DEFAULT_HOME_FIELDS = ['date', 'campaign', 'impressions', 'clicks', 'ctr'];
+
+            const state = {
+                activeTabId: 'home',
+                nextTabNumber: 1,
+                tabs: [
+                    {
+                        id: 'home',
+                        name: 'ホーム',
+                        description: '新しいデータ操作を開始します',
+                        tableState: {
+                            columns: DEFAULT_HOME_FIELDS.map(field => cloneColumnDefinition(field)),
+                            filter: [],
+                            sort: []
+                        }
+                    }
+                ],
+                tableData: [
+                    { id: 1, date: '2023-10-01', campaign: '秋のセール', impressions: 15000, clicks: 300, ctr: 0.02, cost: 50000, conversions: 10, media: 'Google' },
+                    { id: 2, date: '2023-10-01', campaign: '新製品ローンチ', impressions: 22000, clicks: 450, ctr: 0.0205, cost: 75000, conversions: 15, media: 'Facebook' },
+                    { id: 3, date: '2023-10-02', campaign: '秋のセール', impressions: 16500, clicks: 350, ctr: 0.0212, cost: 55000, conversions: 12, media: 'Google' },
+                    { id: 4, date: '2023-11-05', campaign: 'ブラックフライデー予告', impressions: 30000, clicks: 800, ctr: 0.0267, cost: 120000, conversions: 25, media: 'Yahoo' },
+                    { id: 5, date: '2023-11-06', campaign: '新製品ローンチ', impressions: 25000, clicks: 500, ctr: 0.02, cost: 80000, conversions: 18, media: 'Facebook' },
+                ]
+            };
+
+            // --- UI Elements ---
+            const chatPanel = document.getElementById('chat-panel');
+            const toggleChatBtn = document.getElementById('toggle-chat-btn');
+            const tabTitleDisplay = document.getElementById('tab-title-display');
+            const tabTitleInput = document.getElementById('tab-title-input');
+            const tabDescriptionDisplay = document.getElementById('tab-description-display');
+            const tabDescriptionInput = document.getElementById('tab-description-input');
+            const saveButton = document.getElementById('save-button');
+            const tabBarContainer = document.getElementById('tab-bar-container');
+            const columnListContainer = document.getElementById('column-list');
+            const columnListEmptyText = document.getElementById('column-list-empty');
+            const tabListMenuBtn = document.getElementById('tab-list-menu-btn');
+            const tabListDropdown = document.getElementById('tab-list-dropdown');
+            const tableWrapper = document.getElementById('data-table-wrapper');
+
+            // --- Tabulator Initialization ---
+            const table = new Tabulator('#data-table', {
+                data: state.tableData,
+                height: '100%',
+                layout: 'fitDataStretch',
+                movableColumns: true,
+                resizableRows: true,
+                placeholder: 'カラムを左からドラッグ＆ドロップしてデータを表示',
+                initialSort: [],
+                initialFilter: [],
+                columnDefaults: {
+                    headerSort: true,
+                }
+            });
+
+            table.on('tableBuilt', () => {
+                updateActiveTab(state.activeTabId, true);
+            });
+
+            table.on('columnAdded', () => {
+                window.requestAnimationFrame(() => {
+                    syncColumnListWithTable();
+                    updateColumnHeaderDragHandles();
+                });
+            });
+
+            table.on('columnDeleted', () => {
+                window.requestAnimationFrame(() => {
+                    syncColumnListWithTable();
+                    updateColumnHeaderDragHandles();
+                });
+            });
+
+            table.on('columnMoved', () => {
+                window.requestAnimationFrame(() => {
+                    updateColumnHeaderDragHandles();
+                });
+            });
+
+            // --- Core Functions ---
+            function cloneColumnDefinition(field) {
+                const baseDefinition = COLUMN_LOOKUP[field];
+                return baseDefinition ? JSON.parse(JSON.stringify(baseDefinition)) : null;
+            }
+
+            async function updateActiveTab(tabId, isInitialLoad = false) {
+                state.activeTabId = tabId;
+                const activeTab = state.tabs.find(t => t.id === tabId);
+                if (!activeTab) return;
+
+                const columnDefinitions = (activeTab.tableState?.columns?.length
+                    ? activeTab.tableState.columns
+                    : DEFAULT_HOME_FIELDS.map(field => cloneColumnDefinition(field)).filter(Boolean));
+
+                await table.setColumns(columnDefinitions);
+
+                if (activeTab.tableState?.sort?.length) {
+                    table.setSort(activeTab.tableState.sort);
+                } else {
+                    table.clearSort();
+                }
+
+                if (activeTab.tableState?.filter?.length) {
+                    table.setFilter(activeTab.tableState.filter);
+                } else {
+                    table.clearFilter();
+                    table.clearHeaderFilter();
+                }
+
+                syncColumnListWithTable();
+                updateColumnHeaderDragHandles();
+
+                if (!isInitialLoad) {
+                    renderTabs();
+                }
+
+                updateTabHeader();
+            }
+
+            function saveCurrentTableState() {
+                const activeTab = state.tabs.find(t => t.id === state.activeTabId);
+                if (!activeTab) return;
+
+                activeTab.tableState = {
+                    columns: table.getColumnDefinitions(),
+                    sort: table.getSorters(),
+                    filter: table.getFilters(true),
+                };
+            }
+
+            function getActiveColumnFields() {
+                return table.getColumns().map(column => column.getField()).filter(Boolean);
+            }
+
+            function syncColumnListWithTable() {
+                const activeFields = new Set(getActiveColumnFields());
+                columnListContainer.innerHTML = '';
+
+                ALL_COLUMNS.forEach(colDef => {
+                    if (!activeFields.has(colDef.field)) {
+                        const colEl = document.createElement('div');
+                        colEl.className = 'column-item bg-gray-100 text-gray-700 p-2 rounded-md text-sm cursor-grab hover:bg-gray-200';
+                        colEl.draggable = true;
+                        colEl.textContent = colDef.title;
+                        colEl.dataset.field = colDef.field;
+                        columnListContainer.appendChild(colEl);
+                    }
+                });
+
+                columnListEmptyText.classList.toggle('hidden', columnListContainer.children.length !== 0);
+                setupColumnListDrag();
+            }
+
+            function setupColumnListDrag() {
+                const columnItems = columnListContainer.querySelectorAll('.column-item');
+                columnItems.forEach(item => {
+                    item.addEventListener('dragstart', (e) => {
+                        e.dataTransfer.setData('application/x-dataframe-column', e.target.dataset.field);
+                        e.dataTransfer.setData('text/plain', e.target.dataset.field);
+                        e.dataTransfer.effectAllowed = 'move';
+                        item.classList.add('dragging');
+                    });
+                    item.addEventListener('dragend', () => {
+                        item.classList.remove('dragging');
+                    });
+                });
+            }
+
+            function updateColumnHeaderDragHandles() {
+                table.getColumns().forEach(column => {
+                    const field = column.getField();
+                    const headerEl = column.getElement();
+                    if (!field || !headerEl || headerEl.dataset.externalDragEnabled === 'true') {
+                        return;
+                    }
+
+                    headerEl.setAttribute('draggable', 'true');
+                    headerEl.dataset.externalDragEnabled = 'true';
+
+                    headerEl.addEventListener('dragstart', (event) => {
+                        event.dataTransfer.setData('application/x-tabulator-column', field);
+                        event.dataTransfer.setData('text/plain', field);
+                        event.dataTransfer.effectAllowed = 'move';
+                        headerEl.classList.add('is-drag-source');
+                    });
+
+                    headerEl.addEventListener('dragend', () => {
+                        headerEl.classList.remove('is-drag-source');
+                    });
+                });
+            }
+
+            // --- Rendering Functions ---
+            function renderTabs() {
+                tabBarContainer.innerHTML = '';
+                tabListDropdown.innerHTML = '';
+
+                state.tabs.forEach(tab => {
+                    const tabEl = createTabElement(tab, 'button');
+                    tabBarContainer.appendChild(tabEl);
+
+                    const listItem = createTabElement(tab, 'a');
+                    tabListDropdown.appendChild(listItem);
+                });
+
+                updateTabHeader();
+                initTabSortable();
+            }
+
+            function createTabElement(tab, type) {
+                const el = document.createElement(type);
+                el.dataset.tabId = tab.id;
+                el.textContent = tab.name;
+
+                if (type === 'button') {
+                    el.className = `px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors whitespace-nowrap ${tab.id === state.activeTabId
+                        ? 'border-blue-600 text-blue-600 bg-blue-50'
+                        : 'border-transparent text-gray-600 hover:bg-gray-100 hover:text-gray-800'
+                        }`;
+                } else {
+                    el.href = '#';
+                    el.className = `block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 ${tab.id === state.activeTabId ? 'bg-gray-100' : ''}`;
+                }
+
+                return el;
+            }
+
+            function updateTabHeader() {
+                const activeTab = state.tabs.find(t => t.id === state.activeTabId);
+                if (activeTab) {
+                    tabTitleDisplay.textContent = activeTab.name;
+                    tabTitleInput.value = activeTab.name;
+                    tabDescriptionDisplay.textContent = activeTab.description;
+                    tabDescriptionInput.value = activeTab.description;
+                }
+            }
+
+            function dataTransferHasType(dataTransfer, type) {
+                if (!dataTransfer || !dataTransfer.types) {
+                    return false;
+                }
+
+                const { types } = dataTransfer;
+                if (typeof types.includes === 'function') {
+                    return types.includes(type);
+                }
+                if (typeof types.contains === 'function') {
+                    return types.contains(type);
+                }
+
+                return Array.from(types).includes(type);
+            }
+
+            // --- Event Listeners ---
+            toggleChatBtn.addEventListener('click', () => {
+                chatPanel.classList.toggle('chat-panel-hidden');
+            });
+
+            function handleTabClick(event) {
+                const tabId = event.target.closest('[data-tab-id]')?.dataset.tabId;
+                if (tabId && tabId !== state.activeTabId) {
+                    updateActiveTab(tabId);
+                }
+                if (event.currentTarget.id === 'tab-list-dropdown') {
+                    tabListDropdown.classList.add('hidden');
+                }
+            }
+            tabBarContainer.addEventListener('click', handleTabClick);
+            tabListDropdown.addEventListener('click', handleTabClick);
+
+            saveButton.addEventListener('click', () => {
+                let activeTab = state.tabs.find(t => t.id === state.activeTabId);
+
+                if (activeTab.id === 'home') {
+                    const newTabId = `tab${state.nextTabNumber++}`;
+                    const newTabName = `タブ${state.nextTabNumber - 1}`;
+                    const newTab = {
+                        id: newTabId,
+                        name: newTabName,
+                        description: `自動生成 (${Math.floor(1000 + Math.random() * 9000)})`,
+                        tableState: {}
+                    };
+                    state.tabs.push(newTab);
+                    state.activeTabId = newTabId;
+                    activeTab = newTab;
+                }
+
+                saveCurrentTableState();
+
+                saveButton.textContent = '保存しました!';
+                saveButton.classList.replace('bg-blue-600', 'bg-green-500');
+                saveButton.classList.remove('hover:bg-blue-700');
+                setTimeout(() => {
+                    saveButton.textContent = '保存';
+                    saveButton.classList.replace('bg-green-500', 'bg-blue-600');
+                    saveButton.classList.add('hover:bg-blue-700');
+                }, 2000);
+
+                renderTabs();
+            });
+
+            function setupInlineEditor(displayEl, inputEl, onSave) {
+                displayEl.addEventListener('click', () => {
+                    displayEl.classList.add('hidden');
+                    inputEl.classList.remove('hidden');
+                    inputEl.focus();
+                    inputEl.select();
+                });
+
+                const save = () => {
+                    const newValue = inputEl.value.trim();
+                    const activeTab = state.tabs.find(t => t.id === state.activeTabId);
+                    if (newValue && activeTab) {
+                        onSave(activeTab, newValue);
+                        renderTabs();
+                    }
+                    displayEl.classList.remove('hidden');
+                    inputEl.classList.add('hidden');
+                };
+
+                inputEl.addEventListener('blur', save);
+                inputEl.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') save();
+                    else if (e.key === 'Escape') {
+                        inputEl.value = displayEl.textContent;
+                        displayEl.classList.remove('hidden');
+                        inputEl.classList.add('hidden');
+                    }
+                });
+            }
+            setupInlineEditor(tabTitleDisplay, tabTitleInput, (tab, value) => tab.name = value);
+            setupInlineEditor(tabDescriptionDisplay, tabDescriptionInput, (tab, value) => tab.description = value);
+
+            tabListMenuBtn.addEventListener('click', (event) => {
+                event.stopPropagation();
+                tabListDropdown.classList.toggle('hidden');
+            });
+            document.addEventListener('click', (event) => {
+                if (!tabListMenuBtn.contains(event.target) && !tabListDropdown.contains(event.target)) {
+                    tabListDropdown.classList.add('hidden');
+                }
+            });
+
+            let dropHoverCounter = 0;
+            columnListContainer.addEventListener('dragenter', (event) => {
+                if (dataTransferHasType(event.dataTransfer, 'application/x-tabulator-column')) {
+                    dropHoverCounter++;
+                    columnListContainer.classList.add('column-drop-target');
+                }
+            });
+            columnListContainer.addEventListener('dragleave', (event) => {
+                if (dataTransferHasType(event.dataTransfer, 'application/x-tabulator-column')) {
+                    dropHoverCounter = Math.max(0, dropHoverCounter - 1);
+                    if (dropHoverCounter === 0) {
+                        columnListContainer.classList.remove('column-drop-target');
+                    }
+                }
+            });
+            columnListContainer.addEventListener('dragover', (event) => {
+                if (dataTransferHasType(event.dataTransfer, 'application/x-tabulator-column')) {
+                    event.preventDefault();
+                }
+            });
+            columnListContainer.addEventListener('drop', (event) => {
+                if (dataTransferHasType(event.dataTransfer, 'application/x-tabulator-column')) {
+                    event.preventDefault();
+                    const field = event.dataTransfer.getData('application/x-tabulator-column');
+                    if (field && table.getColumn(field)) {
+                        table.deleteColumn(field);
+                    }
+                }
+                dropHoverCounter = 0;
+                columnListContainer.classList.remove('column-drop-target');
+            });
+
+            tableWrapper.addEventListener('dragover', (event) => {
+                if (dataTransferHasType(event.dataTransfer, 'application/x-dataframe-column')) {
+                    event.preventDefault();
+                }
+            });
+            tableWrapper.addEventListener('drop', (event) => {
+                if (dataTransferHasType(event.dataTransfer, 'application/x-dataframe-column')) {
+                    event.preventDefault();
+                    const field = event.dataTransfer.getData('application/x-dataframe-column');
+                    if (field && !table.getColumn(field)) {
+                        const columnDefinition = cloneColumnDefinition(field);
+                        if (columnDefinition) {
+                            table.addColumn(columnDefinition, false);
+                        }
+                    }
+                }
+            });
+
+            let tabSortable;
+            let listSortable;
+            function initTabSortable() {
+                const onSort = (evt) => {
+                    const newOrder = Array.from(evt.to.children).map(el => el.dataset.tabId);
+                    state.tabs.sort((a, b) => newOrder.indexOf(a.id) - newOrder.indexOf(b.id));
+                    renderTabs();
+                };
+
+                if (tabSortable) tabSortable.destroy();
+                tabSortable = Sortable.create(tabBarContainer, {
+                    animation: 150,
+                    ghostClass: 'sortable-ghost',
+                    dragClass: 'sortable-drag',
+                    onEnd: onSort,
+                });
+
+                if (listSortable) listSortable.destroy();
+                listSortable = Sortable.create(tabListDropdown, {
+                    animation: 150,
+                    ghostClass: 'sortable-ghost',
+                    dragClass: 'sortable-drag',
+                    onEnd: onSort,
+                });
+            }
+
+            renderTabs();
+            syncColumnListWithTable();
+            updateTabHeader();
+        });
+    </script>
+</body>
+
+</html>
