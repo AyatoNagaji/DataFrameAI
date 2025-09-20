@@ -59,15 +59,6 @@
             border-style: dashed;
         }
 
-        .column-item {
-            transition: transform 150ms ease, box-shadow 150ms ease;
-        }
-
-        .column-item:active {
-            transform: scale(0.98);
-            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25);
-        }
-
         ::-webkit-scrollbar {
             width: 8px;
             height: 8px;
@@ -87,30 +78,11 @@
         }
 
         #main-grid {
-            position: relative;
+            transition: grid-template-columns 300ms ease-in-out;
         }
 
-        #chat-panel {
-            transition: transform 250ms ease, opacity 250ms ease;
-        }
-
-        #chat-panel.chat-panel-hidden {
-            transform: translateX(calc(100% + 1rem));
-            opacity: 0;
-            pointer-events: none;
-        }
-
-        .column-drop-target {
-            border: 2px dashed #93c5fd;
-            background: #eff6ff;
-        }
-
-        .tabulator-col[draggable="true"] .tabulator-col-title {
-            cursor: grab;
-        }
-
-        .tabulator-col[draggable="true"].is-drag-source {
-            opacity: 0.6;
+        .sortable-drag {
+            opacity: 1 !important;
         }
     </style>
 </head>
@@ -154,52 +126,45 @@
     </header>
 
     <!-- Main Content -->
-    <main class="flex-grow grid grid-cols-[260px_1fr] gap-2 p-2 overflow-hidden" id="main-grid">
-        <!-- Left Sidebar: Column List -->
-        <aside class="bg-white rounded-lg border border-gray-200 flex flex-col">
-            <h2 class="text-sm font-semibold p-3 border-b border-gray-200 text-gray-700">カラム一覧</h2>
-            <div class="p-3 space-y-2 overflow-y-auto" id="column-list-wrapper">
-                <p class="text-xs text-gray-500 mb-2">カラムをドラッグして表に追加 / 表から削除</p>
-                <div id="column-list" class="space-y-2"></div>
-                <p id="column-list-empty" class="text-xs text-gray-400 hidden">すべてのカラムが表に表示されています</p>
-            </div>
-        </aside>
-
-        <!-- Center: Data Table -->
-        <section class="bg-white rounded-lg border border-gray-200 flex flex-col overflow-hidden relative">
-            <div id="data-table-wrapper" class="flex-grow h-full">
-                <div id="data-table" class="flex-grow h-full"></div>
-            </div>
-
-            <!-- Right Sidebar: AI Chat -->
-            <aside id="chat-panel"
-                class="absolute top-4 right-4 w-80 max-w-full bg-white rounded-xl border border-gray-200 shadow-lg flex flex-col transition-all z-20">
-                <h2 class="text-sm font-semibold p-3 border-b border-gray-200 text-gray-700">AIチャット</h2>
-                <div class="flex-grow p-3 space-y-4 overflow-y-auto">
-                    <div class="flex items-start gap-2.5">
-                        <div
-                            class="flex flex-col w-full leading-1.5 p-3 border border-gray-200 bg-gray-100 rounded-e-xl rounded-es-xl">
-                            <p class="text-sm font-normal text-gray-900">こんにちは！どのようなデータ操作をご希望ですか？</p>
-                        </div>
-                    </div>
-                    <div class="flex items-start gap-2.5 justify-end">
-                        <div
-                            class="flex flex-col w-full leading-1.5 p-3 border border-gray-200 bg-blue-600 text-white rounded-s-xl rounded-ee-xl">
-                            <p class="text-sm font-normal">10月のデータだけ表示して</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="p-3 border-t border-gray-200 mt-auto">
-                    <div class="flex items-center">
-                        <input type="text"
-                            class="w-full bg-gray-100 border border-gray-200 rounded-l-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="メッセージを入力...">
-                        <button
-                            class="px-4 py-2 bg-blue-600 text-white rounded-r-lg text-sm font-medium hover:bg-blue-700">送信</button>
-                    </div>
+    <main class="flex-grow p-2 overflow-hidden relative">
+        <div class="h-full grid grid-cols-[240px_1fr] gap-2">
+            <!-- Left Sidebar: Column List -->
+            <aside class="bg-white rounded-lg border border-gray-200 flex flex-col">
+                <h2 class="text-sm font-semibold p-3 border-b border-gray-200 text-gray-700">カラム一覧</h2>
+                <div class="p-3 space-y-2 overflow-y-auto">
+                    <p class="text-xs text-gray-500 mb-2">カラムをドラッグして表に追加</p>
+                    <div id="column-list"></div>
                 </div>
             </aside>
-        </section>
+
+            <!-- Center: Data Table -->
+            <section class="bg-white rounded-lg border border-gray-200 flex flex-col overflow-hidden">
+                <div id="data-table" class="flex-grow h-full"></div>
+            </section>
+        </div>
+
+        <!-- Right Sidebar: AI Chat (Overlay) -->
+        <aside id="chat-panel"
+            class="absolute top-2 right-2 bottom-2 w-[320px] bg-white rounded-lg border border-gray-200 flex flex-col transition-transform duration-300 translate-x-0 shadow-lg">
+            <h2 class="text-sm font-semibold p-3 border-b border-gray-200 text-gray-700">AIチャット</h2>
+            <div id="chat-history" class="flex-grow p-3 space-y-4 overflow-y-auto">
+                <div class="flex items-start gap-2.5">
+                    <div
+                        class="flex flex-col w-full max-w-[320px] leading-1.5 p-3 border-gray-200 bg-gray-100 rounded-e-xl rounded-es-xl">
+                        <p class="text-sm font-normal text-gray-900">こんにちは！どのようなデータ操作をご希望ですか？</p>
+                    </div>
+                </div>
+            </div>
+            <div class="p-3 border-t border-gray-200 mt-auto">
+                <div class="flex items-center">
+                    <input type="text"
+                        class="w-full bg-gray-100 border border-gray-200 rounded-l-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="メッセージを入力...">
+                    <button
+                        class="px-4 py-2 bg-blue-600 text-white rounded-r-lg text-sm font-medium hover:bg-blue-700">送信</button>
+                </div>
+            </div>
+        </aside>
     </main>
 
     <!-- Bottom Tab Bar -->
@@ -223,39 +188,23 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function () {
-            // --- Constants ---
+            // --- State Management ---
             const ALL_COLUMNS = [
-                { id: 'date', title: '日付', field: 'date', width: 140, headerFilter: 'input' },
-                { id: 'campaign', title: 'キャンペーン', field: 'campaign', minWidth: 180, headerFilter: 'input' },
+                { id: 'date', title: '日付', field: 'date', width: 120, headerFilter: "input" },
+                { id: 'campaign', title: 'キャンペーン', field: 'campaign', width: 200, headerFilter: "input" },
                 { id: 'impressions', title: '表示回数', field: 'impressions', width: 120, hozAlign: 'right', sorter: 'number' },
                 { id: 'clicks', title: 'クリック数', field: 'clicks', width: 120, hozAlign: 'right', sorter: 'number' },
-                { id: 'ctr', title: 'CTR', field: 'ctr', width: 100, hozAlign: 'right', formatter: 'progress', formatterParams: { color: '#4f46e5' } },
+                { id: 'ctr', title: 'CTR', field: 'ctr', width: 100, hozAlign: 'right', sorter: 'number' },
                 { id: 'cost', title: '費用', field: 'cost', width: 120, hozAlign: 'right', sorter: 'number', formatter: 'money', formatterParams: { symbol: '¥' } },
                 { id: 'conversions', title: 'CV', field: 'conversions', width: 100, hozAlign: 'right', sorter: 'number' },
-                { id: 'media', title: '媒体', field: 'media', minWidth: 160, headerFilter: 'select', headerFilterParams: { values: true } },
+                { id: 'media', title: '媒体', field: 'media', width: 120, headerFilter: "select", headerFilterParams: { values: true } },
             ];
-
-            const COLUMN_LOOKUP = ALL_COLUMNS.reduce((acc, col) => {
-                acc[col.field] = col;
-                return acc;
-            }, {});
-
-            const DEFAULT_HOME_FIELDS = ['date', 'campaign', 'impressions', 'clicks', 'ctr'];
 
             const state = {
                 activeTabId: 'home',
                 nextTabNumber: 1,
                 tabs: [
-                    {
-                        id: 'home',
-                        name: 'ホーム',
-                        description: '新しいデータ操作を開始します',
-                        tableState: {
-                            columns: DEFAULT_HOME_FIELDS.map(field => cloneColumnDefinition(field)),
-                            filter: [],
-                            sort: []
-                        }
-                    }
+                    { id: 'home', name: 'ホーム', description: '新しいデータ操作を開始します', tableState: { columns: ALL_COLUMNS.slice(0, 5), filter: [], sort: [] } }
                 ],
                 tableData: [
                     { id: 1, date: '2023-10-01', campaign: '秋のセール', impressions: 15000, clicks: 300, ctr: 0.02, cost: 50000, conversions: 10, media: 'Google' },
@@ -276,88 +225,72 @@
             const saveButton = document.getElementById('save-button');
             const tabBarContainer = document.getElementById('tab-bar-container');
             const columnListContainer = document.getElementById('column-list');
-            const columnListEmptyText = document.getElementById('column-list-empty');
             const tabListMenuBtn = document.getElementById('tab-list-menu-btn');
             const tabListDropdown = document.getElementById('tab-list-dropdown');
-            const tableWrapper = document.getElementById('data-table-wrapper');
 
             // --- Tabulator Initialization ---
-            const table = new Tabulator('#data-table', {
+            const table = new Tabulator("#data-table", {
                 data: state.tableData,
-                height: '100%',
-                layout: 'fitDataStretch',
+                height: "100%",
+                layout: "fitColumns",
                 movableColumns: true,
                 resizableRows: true,
-                placeholder: 'カラムを左からドラッグ＆ドロップしてデータを表示',
+                placeholder: "カラムを左からドラッグ＆ドロップしてデータを表示",
                 initialSort: [],
                 initialFilter: [],
-                columnDefaults: {
-                    headerSort: true,
-                }
-            });
-
-            table.on('tableBuilt', () => {
-                updateActiveTab(state.activeTabId, true);
-            });
-
-            table.on('columnAdded', () => {
-                window.requestAnimationFrame(() => {
-                    syncColumnListWithTable();
-                    updateColumnHeaderDragHandles();
-                });
-            });
-
-            table.on('columnDeleted', () => {
-                window.requestAnimationFrame(() => {
-                    syncColumnListWithTable();
-                    updateColumnHeaderDragHandles();
-                });
-            });
-
-            table.on('columnMoved', () => {
-                window.requestAnimationFrame(() => {
-                    updateColumnHeaderDragHandles();
-                });
             });
 
             // --- Core Functions ---
-            function cloneColumnDefinition(field) {
-                const baseDefinition = COLUMN_LOOKUP[field];
-                return baseDefinition ? JSON.parse(JSON.stringify(baseDefinition)) : null;
-            }
-
-            async function updateActiveTab(tabId, isInitialLoad = false) {
+            function updateActiveTab(tabId, isInitialLoad = false) {
                 state.activeTabId = tabId;
                 const activeTab = state.tabs.find(t => t.id === tabId);
                 if (!activeTab) return;
 
-                const columnDefinitions = (activeTab.tableState?.columns?.length
-                    ? activeTab.tableState.columns
-                    : DEFAULT_HOME_FIELDS.map(field => cloneColumnDefinition(field)).filter(Boolean));
-
-                await table.setColumns(columnDefinitions);
-
-                if (activeTab.tableState?.sort?.length) {
-                    table.setSort(activeTab.tableState.sort);
-                } else {
-                    table.clearSort();
+                // Restore table state
+                if (activeTab.tableState) {
+                    table.setColumns(activeTab.tableState.columns || ALL_COLUMNS.slice(0, 5));
+                    table.setSort(activeTab.tableState.sort || []);
+                    table.setFilter(activeTab.tableState.filter || []);
                 }
-
-                if (activeTab.tableState?.filter?.length) {
-                    table.setFilter(activeTab.tableState.filter);
-                } else {
-                    table.clearFilter();
-                    table.clearHeaderFilter();
-                }
-
-                syncColumnListWithTable();
-                updateColumnHeaderDragHandles();
+                
+                // テーブルの状態に合わせてカラム一覧の表示（+ / ×）を更新します。
+                renderColumns();
 
                 if (!isInitialLoad) {
                     renderTabs();
                 }
-
                 updateTabHeader();
+            }
+            // --- Column Formatters ---
+            function deleteColumnFormatter(cell, formatterParams, onRendered) {
+                const field = cell.getColumn().getField();
+                const title = cell.getValue();
+
+                const container = document.createElement("div");
+                container.className = "flex items-center justify-between w-full";
+
+                const titleSpan = document.createElement("span");
+                titleSpan.textContent = title;
+                titleSpan.className = "truncate";
+
+                const deleteBtn = document.createElement("button");
+                deleteBtn.innerHTML = "&times;"; // '×' character
+                deleteBtn.className = "delete-column-btn ml-2 text-gray-400 hover:text-red-500 font-bold px-1";
+                deleteBtn.dataset.field = field;
+                deleteBtn.title = "このカラムを削除";
+
+                container.appendChild(titleSpan);
+                container.appendChild(deleteBtn);
+
+                return container;
+            }
+
+            // --- Helper Functions ---
+            function addColumnToTable(columnDef) {
+                if (columnDef && !table.getColumns().some(c => c.getField() === columnDef.field)) {
+                    table.addColumn(columnDef, false);
+                    renderColumns(); // Re-render column list
+                }
             }
 
             function saveCurrentTableState() {
@@ -371,73 +304,10 @@
                 };
             }
 
-            function getActiveColumnFields() {
-                return table.getColumns().map(column => column.getField()).filter(Boolean);
-            }
-
-            function syncColumnListWithTable() {
-                const activeFields = new Set(getActiveColumnFields());
-                columnListContainer.innerHTML = '';
-
-                ALL_COLUMNS.forEach(colDef => {
-                    if (!activeFields.has(colDef.field)) {
-                        const colEl = document.createElement('div');
-                        colEl.className = 'column-item bg-gray-100 text-gray-700 p-2 rounded-md text-sm cursor-grab hover:bg-gray-200';
-                        colEl.draggable = true;
-                        colEl.textContent = colDef.title;
-                        colEl.dataset.field = colDef.field;
-                        columnListContainer.appendChild(colEl);
-                    }
-                });
-
-                columnListEmptyText.classList.toggle('hidden', columnListContainer.children.length !== 0);
-                setupColumnListDrag();
-            }
-
-            function setupColumnListDrag() {
-                const columnItems = columnListContainer.querySelectorAll('.column-item');
-                columnItems.forEach(item => {
-                    item.addEventListener('dragstart', (e) => {
-                        e.dataTransfer.setData('application/x-dataframe-column', e.target.dataset.field);
-                        e.dataTransfer.setData('text/plain', e.target.dataset.field);
-                        e.dataTransfer.effectAllowed = 'move';
-                        item.classList.add('dragging');
-                    });
-                    item.addEventListener('dragend', () => {
-                        item.classList.remove('dragging');
-                    });
-                });
-            }
-
-            function updateColumnHeaderDragHandles() {
-                table.getColumns().forEach(column => {
-                    const field = column.getField();
-                    const headerEl = column.getElement();
-                    if (!field || !headerEl || headerEl.dataset.externalDragEnabled === 'true') {
-                        return;
-                    }
-
-                    headerEl.setAttribute('draggable', 'true');
-                    headerEl.dataset.externalDragEnabled = 'true';
-
-                    headerEl.addEventListener('dragstart', (event) => {
-                        event.dataTransfer.setData('application/x-tabulator-column', field);
-                        event.dataTransfer.setData('text/plain', field);
-                        event.dataTransfer.effectAllowed = 'move';
-                        headerEl.classList.add('is-drag-source');
-                    });
-
-                    headerEl.addEventListener('dragend', () => {
-                        headerEl.classList.remove('is-drag-source');
-                    });
-                });
-            }
-
             // --- Rendering Functions ---
             function renderTabs() {
                 tabBarContainer.innerHTML = '';
                 tabListDropdown.innerHTML = '';
-
                 state.tabs.forEach(tab => {
                     const tabEl = createTabElement(tab, 'button');
                     tabBarContainer.appendChild(tabEl);
@@ -445,7 +315,6 @@
                     const listItem = createTabElement(tab, 'a');
                     tabListDropdown.appendChild(listItem);
                 });
-
                 updateTabHeader();
                 initTabSortable();
             }
@@ -454,7 +323,6 @@
                 const el = document.createElement(type);
                 el.dataset.tabId = tab.id;
                 el.textContent = tab.name;
-
                 if (type === 'button') {
                     el.className = `px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors whitespace-nowrap ${tab.id === state.activeTabId
                         ? 'border-blue-600 text-blue-600 bg-blue-50'
@@ -464,7 +332,6 @@
                     el.href = '#';
                     el.className = `block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 ${tab.id === state.activeTabId ? 'bg-gray-100' : ''}`;
                 }
-
                 return el;
             }
 
@@ -478,57 +345,110 @@
                 }
             }
 
-            function dataTransferHasType(dataTransfer, type) {
-                if (!dataTransfer || !dataTransfer.types) {
-                    return false;
-                }
+            function renderColumns() {
+                columnListContainer.innerHTML = '';
+                const addedColumnFields = table.getColumns().map(c => c.getField());
 
-                const { types } = dataTransfer;
-                if (typeof types.includes === 'function') {
-                    return types.includes(type);
-                }
-                if (typeof types.contains === 'function') {
-                    return types.contains(type);
-                }
+                // Sort columns: added ones first, then alphabetically
+                const sortedColumns = [...ALL_COLUMNS].sort((a, b) => {
+                    const aIsAdded = addedColumnFields.includes(a.field);
+                    const bIsAdded = addedColumnFields.includes(b.field);
+                    if (aIsAdded && !bIsAdded) return -1;
+                    if (!aIsAdded && bIsAdded) return 1;
+                    return a.title.localeCompare(b.title);
+                });
 
-                return Array.from(types).includes(type);
+                sortedColumns.forEach(colDef => {
+                    const isAdded = addedColumnFields.includes(colDef.field);
+
+                    // Main container for the column item
+                    const colEl = document.createElement('div');
+                    colEl.className = `column-item flex items-center justify-between p-2 rounded-md text-sm ${isAdded ? 'bg-gray-200 text-gray-500' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`;
+                    colEl.dataset.columnDef = JSON.stringify(colDef);
+
+                    // Draggable column name
+                    const nameSpan = document.createElement('span');
+                    nameSpan.className = `column-name-span truncate flex-grow ${isAdded ? 'cursor-default' : 'cursor-grab'}`;
+                    nameSpan.textContent = colDef.title;
+                    nameSpan.draggable = !isAdded;
+                    nameSpan.title = colDef.title; // Show full name on hover
+
+                    colEl.appendChild(nameSpan);
+
+                    // Add or Remove button
+                    if (isAdded) {
+                        const removeButton = document.createElement('button');
+                        removeButton.className = 'list-remove-column-btn ml-2 px-2 py-0.5 rounded text-gray-500 hover:bg-gray-300 hover:text-red-500 shrink-0';
+                        removeButton.innerHTML = '&times;';
+                        removeButton.title = `${colDef.title} を削除`;
+                        removeButton.dataset.field = colDef.field;
+                        colEl.appendChild(removeButton);
+                    } else {
+                        const addButton = document.createElement('button');
+                        addButton.className = 'add-column-btn ml-2 px-2 py-0.5 rounded text-gray-500 hover:bg-gray-300 hover:text-gray-800 shrink-0';
+                        addButton.textContent = '+';
+                        addButton.title = `${colDef.title} を追加`;
+                        colEl.appendChild(addButton);
+                    }
+
+                    columnListContainer.appendChild(colEl);
+                });
+
+                // Re-attach event listeners
+                addColumnDragListeners();
+                addColumnButtonListeners();
             }
 
             // --- Event Listeners ---
-            toggleChatBtn.addEventListener('click', () => {
-                chatPanel.classList.toggle('chat-panel-hidden');
-            });
+            const tableEl = document.getElementById('data-table');
 
-            function handleTabClick(event) {
-                const tabId = event.target.closest('[data-tab-id]')?.dataset.tabId;
+            function handleTabClick(e) {
+                const tabId = e.target.closest('[data-tab-id]')?.dataset.tabId;
                 if (tabId && tabId !== state.activeTabId) {
                     updateActiveTab(tabId);
                 }
-                if (event.currentTarget.id === 'tab-list-dropdown') {
+                if (e.currentTarget.id === 'tab-list-dropdown') {
                     tabListDropdown.classList.add('hidden');
                 }
             }
             tabBarContainer.addEventListener('click', handleTabClick);
+
+            toggleChatBtn.addEventListener('click', () => {
+                chatPanel.classList.toggle('translate-x-full');
+                chatPanel.classList.toggle('opacity-0');
+            });
             tabListDropdown.addEventListener('click', handleTabClick);
 
             saveButton.addEventListener('click', () => {
-                let activeTab = state.tabs.find(t => t.id === state.activeTabId);
+                const activeTabId = state.activeTabId;
 
-                if (activeTab.id === 'home') {
+                if (activeTabId === 'home') {
+                    // ホームタブで保存した場合：新しいタブを作成し、ホームタブをリセット
+                    const currentTableState = {
+                        columns: table.getColumnDefinitions(),
+                        sort: table.getSorters(),
+                        filter: table.getFilters(true),
+                    };
+
                     const newTabId = `tab${state.nextTabNumber++}`;
                     const newTabName = `タブ${state.nextTabNumber - 1}`;
                     const newTab = {
                         id: newTabId,
                         name: newTabName,
                         description: `自動生成 (${Math.floor(1000 + Math.random() * 9000)})`,
-                        tableState: {}
+                        tableState: currentTableState
                     };
                     state.tabs.push(newTab);
-                    state.activeTabId = newTabId;
-                    activeTab = newTab;
-                }
 
-                saveCurrentTableState();
+                    // ホームタブをリセット
+                    const homeTab = state.tabs.find(t => t.id === 'home');
+                    homeTab.tableState = { columns: [], filter: [], sort: [] };
+
+                    state.activeTabId = newTabId;
+                } else {
+                    // 既存のタブで保存した場合：現在のタブの状態を更新
+                    saveCurrentTableState();
+                }
 
                 saveButton.textContent = '保存しました!';
                 saveButton.classList.replace('bg-blue-600', 'bg-green-500');
@@ -574,68 +494,62 @@
             setupInlineEditor(tabTitleDisplay, tabTitleInput, (tab, value) => tab.name = value);
             setupInlineEditor(tabDescriptionDisplay, tabDescriptionInput, (tab, value) => tab.description = value);
 
-            tabListMenuBtn.addEventListener('click', (event) => {
-                event.stopPropagation();
+            tabListMenuBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
                 tabListDropdown.classList.toggle('hidden');
             });
-            document.addEventListener('click', (event) => {
-                if (!tabListMenuBtn.contains(event.target) && !tabListDropdown.contains(event.target)) {
+            document.addEventListener('click', (e) => {
+                if (!tabListMenuBtn.contains(e.target) && !tabListDropdown.contains(e.target)) {
                     tabListDropdown.classList.add('hidden');
                 }
             });
 
-            let dropHoverCounter = 0;
-            columnListContainer.addEventListener('dragenter', (event) => {
-                if (dataTransferHasType(event.dataTransfer, 'application/x-tabulator-column')) {
-                    dropHoverCounter++;
-                    columnListContainer.classList.add('column-drop-target');
-                }
-            });
-            columnListContainer.addEventListener('dragleave', (event) => {
-                if (dataTransferHasType(event.dataTransfer, 'application/x-tabulator-column')) {
-                    dropHoverCounter = Math.max(0, dropHoverCounter - 1);
-                    if (dropHoverCounter === 0) {
-                        columnListContainer.classList.remove('column-drop-target');
-                    }
-                }
-            });
-            columnListContainer.addEventListener('dragover', (event) => {
-                if (dataTransferHasType(event.dataTransfer, 'application/x-tabulator-column')) {
-                    event.preventDefault();
-                }
-            });
-            columnListContainer.addEventListener('drop', (event) => {
-                if (dataTransferHasType(event.dataTransfer, 'application/x-tabulator-column')) {
-                    event.preventDefault();
-                    const field = event.dataTransfer.getData('application/x-tabulator-column');
-                    if (field && table.getColumn(field)) {
+            function addColumnDragListeners() {
+                const columnNameSpans = document.querySelectorAll('.column-name-span');
+                columnNameSpans.forEach(span => {
+                    span.addEventListener('dragstart', (e) => {
+                        const columnItem = e.target.closest('.column-item');
+                        e.dataTransfer.setData('text/plain', columnItem.dataset.columnDef);
+                        columnItem.classList.add('dragging');
+                    });
+                    span.addEventListener('dragend', (e) => {
+                        const columnItem = e.target.closest('.column-item');
+                        columnItem.classList.remove('dragging');
+                    });
+                });
+            }
+
+            function addColumnButtonListeners() {
+                columnListContainer.addEventListener('click', function (e) {
+                    if (e.target.matches('.add-column-btn')) {
+                        const columnItem = e.target.closest('.column-item');
+                        const columnDef = JSON.parse(columnItem.dataset.columnDef);
+                        addColumnToTable(columnDef);
+                    } else if (e.target.matches('.list-remove-column-btn')) {
+                        const field = e.target.dataset.field;
                         table.deleteColumn(field);
+                        renderColumns();
                     }
-                }
-                dropHoverCounter = 0;
-                columnListContainer.classList.remove('column-drop-target');
-            });
+                });
+            }
 
-            tableWrapper.addEventListener('dragover', (event) => {
-                if (dataTransferHasType(event.dataTransfer, 'application/x-dataframe-column')) {
-                    event.preventDefault();
-                }
-            });
-            tableWrapper.addEventListener('drop', (event) => {
-                if (dataTransferHasType(event.dataTransfer, 'application/x-dataframe-column')) {
-                    event.preventDefault();
-                    const field = event.dataTransfer.getData('application/x-dataframe-column');
-                    if (field && !table.getColumn(field)) {
-                        const columnDefinition = cloneColumnDefinition(field);
-                        if (columnDefinition) {
-                            table.addColumn(columnDefinition, false);
-                        }
+            tableEl.addEventListener('click', function (e) {
+                if (e.target.matches('.delete-column-btn')) {
+                    const field = e.target.dataset.field;
+                    if (field) {
+                        table.deleteColumn(field);
+                        renderColumns(); // Re-render column list to update its state
                     }
                 }
             });
+            tableEl.addEventListener('dragover', (e) => e.preventDefault());
+            tableEl.addEventListener('drop', (e) => {
+                e.preventDefault();
+                const columnDef = JSON.parse(e.dataTransfer.getData('text/plain'));
+                addColumnToTable(columnDef);
+            });
 
-            let tabSortable;
-            let listSortable;
+            let tabSortable, listSortable;
             function initTabSortable() {
                 const onSort = (evt) => {
                     const newOrder = Array.from(evt.to.children).map(el => el.dataset.tabId);
@@ -660,9 +574,9 @@
                 });
             }
 
+            renderColumns();
             renderTabs();
-            syncColumnListWithTable();
-            updateTabHeader();
+            updateActiveTab(state.activeTabId, true);
         });
     </script>
 </body>
