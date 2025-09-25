@@ -4,14 +4,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SaaS BI Tool</title>
+    <title>SaaS BI Tool with PivotTable</title>
 
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
 
     <!-- Tabulator.js -->
     <link href="https://unpkg.com/tabulator-tables@5.5.2/dist/css/tabulator_modern.min.css" rel="stylesheet">
+
+    <!-- PivotTable.js dependencies -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pivottable@2.23.0/dist/pivot.min.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+    <!-- Tabulator.js script -->
     <script type="text/javascript" src="https://unpkg.com/tabulator-tables@5.5.2/dist/js/tabulator.min.js"></script>
+
+    <!-- PivotTable.js -->
+    <script src="https://cdn.jsdelivr.net/npm/pivottable@2.23.0/dist/pivot.min.js"></script>
 
     <!-- Sortable.js for drag-and-drop tabs -->
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
@@ -84,6 +93,11 @@
         .sortable-drag {
             opacity: 1 !important;
         }
+
+        /* Pivot modal hidden state */
+        #pivot-modal.hidden {
+            display: none;
+        }
     </style>
 </head>
 
@@ -94,29 +108,25 @@
         <div class="flex items-center gap-4 min-w-0">
             <div class="min-w-0">
                 <div class="flex items-center gap-2">
-                    <h1 id="tab-title-display" class="text-lg font-semibold text-gray-800 cursor-pointer truncate"
-                        title="クリックして編集"></h1>
-                    <input type="text" id="tab-title-input"
-                        class="text-lg font-semibold border border-blue-400 rounded-md px-2 py-0.5 hidden w-full">
+                <h1 id="tab-title-display" class="text-lg font-semibold text-gray-800 cursor-pointer truncate" title="クリックして編集"></h1>
+                <input type="text" id="tab-title-input" class="text-lg font-semibold border border-blue-400 rounded-md px-2 py-0.5 hidden w-full">
                 </div>
                 <div class="flex items-center gap-2">
-                    <p id="tab-description-display" class="text-sm text-gray-500 cursor-pointer truncate"
-                        title="クリックして編集"></p>
-                    <input type="text" id="tab-description-input"
-                        class="text-sm text-gray-500 border border-blue-400 rounded-md px-2 py-0.5 hidden w-full">
+                <p id="tab-description-display" class="text-sm text-gray-500 cursor-pointer truncate" title="クリックして編集"></p>
+                <input type="text" id="tab-description-input" class="text-sm text-gray-500 border border-blue-400 rounded-md px-2 py-0.5 hidden w-full">
                 </div>
             </div>
         </div>
         <div class="flex items-center gap-4">
-            <button id="save-button"
-                class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+            <button id="save-button" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
                 保存
             </button>
-            <button id="toggle-chat-btn"
-                class="p-2 rounded-md hover:bg-gray-100 text-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400"
-                title="AIチャットの表示/非表示">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- Pivot trigger button -->
+            <button id="pivot-button" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                ピボットテーブルを作成
+            </button>
+            <button id="toggle-chat-btn" class="p-2 rounded-md hover:bg-gray-100 text-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400" title="AIチャットの表示/非表示">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <line x1="3" y1="12" x2="21" y2="12"></line>
                     <line x1="3" y1="6" x2="21" y2="6"></line>
                     <line x1="3" y1="18" x2="21" y2="18"></line>
@@ -132,8 +142,8 @@
             <aside class="bg-white rounded-lg border border-gray-200 flex flex-col">
                 <h2 class="text-sm font-semibold p-3 border-b border-gray-200 text-gray-700">カラム一覧</h2>
                 <div class="p-3 space-y-2 overflow-y-auto">
-                    <p class="text-xs text-gray-500 mb-2">カラムをドラッグして表に追加</p>
-                    <div id="column-list"></div>
+                <p class="text-xs text-gray-500 mb-2">カラムをドラッグして表に追加</p>
+                <div id="column-list"></div>
                 </div>
             </aside>
 
@@ -143,25 +153,20 @@
             </section>
         </div>
 
-        <!-- Right Sidebar: AI Chat (Overlay) -->
-        <aside id="chat-panel"
-            class="absolute top-2 right-2 bottom-2 w-[320px] bg-white rounded-lg border border-gray-200 flex flex-col transition-transform duration-300 translate-x-0 shadow-lg">
+        <!-- Right Sidebar: AI Chat -->
+        <aside id="chat-panel" class="absolute top-2 right-2 bottom-2 w-[320px] bg-white rounded-lg border border-gray-200 flex flex-col transition-transform duration-300 translate-x-0 shadow-lg">
             <h2 class="text-sm font-semibold p-3 border-b border-gray-200 text-gray-700">AIチャット</h2>
             <div id="chat-history" class="flex-grow p-3 space-y-4 overflow-y-auto">
                 <div class="flex items-start gap-2.5">
-                    <div
-                        class="flex flex-col w-full max-w-[320px] leading-1.5 p-3 border-gray-200 bg-gray-100 rounded-e-xl rounded-es-xl">
-                        <p class="text-sm font-normal text-gray-900">こんにちは！どのようなデータ操作をご希望ですか？</p>
-                    </div>
+                <div class="flex flex-col w-full max-w-[320px] leading-1.5 p-3 border-gray-200 bg-gray-100 rounded-e-xl rounded-es-xl">
+                    <p class="text-sm font-normal text-gray-900">こんにちは！どのようなデータ操作をご希望ですか？</p>
+                </div>
                 </div>
             </div>
             <div class="p-3 border-t border-gray-200 mt-auto">
                 <div class="flex items-center">
-                    <input type="text"
-                        class="w-full bg-gray-100 border border-gray-200 rounded-l-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="メッセージを入力...">
-                    <button
-                        class="px-4 py-2 bg-blue-600 text-white rounded-r-lg text-sm font-medium hover:bg-blue-700">送信</button>
+                <input type="text" class="w-full bg-gray-100 border border-gray-200 rounded-l-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="メッセージを入力...">
+                <button class="px-4 py-2 bg-blue-600 text-white rounded-r-lg text-sm font-medium hover:bg-blue-700">送信</button>
                 </div>
             </div>
         </aside>
@@ -170,21 +175,61 @@
     <!-- Bottom Tab Bar -->
     <footer class="bg-white border-t border-gray-200 p-1 flex items-center gap-2 shrink-0">
         <div class="relative">
-            <button id="tab-list-menu-btn" class="p-2 rounded-md hover:bg-gray-100 text-gray-600 focus:outline-none"
-                title="タブ一覧">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <button id="tab-list-menu-btn" class="p-2 rounded-md hover:bg-gray-100 text-gray-600 focus:outline-none" title="タブ一覧">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <line x1="3" y1="12" x2="21" y2="12"></line>
                     <line x1="3" y1="6" x2="21" y2="6"></line>
                     <line x1="3" y1="18" x2="21" y2="18"></line>
                 </svg>
             </button>
-            <div id="tab-list-dropdown"
-                class="absolute bottom-full mb-2 left-0 bg-white border border-gray-200 rounded-lg shadow-lg w-60 hidden py-1 z-10">
-            </div>
+            <div id="tab-list-dropdown" class="absolute bottom-full mb-2 left-0 bg-white border border-gray-200 rounded-lg shadow-lg w-60 hidden py-1 z-10"></div>
         </div>
         <div id="tab-bar-container" class="flex items-center gap-1 overflow-x-auto flex-grow"></div>
     </footer>
+
+    <!-- Pivot Table Modal (simplified) -->
+    <div id="pivot-modal" class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 hidden">
+        <div class="bg-white w-11/12 md:w-3/4 h-4/5 rounded-lg shadow-lg flex flex-col overflow-hidden">
+            <!-- Header -->
+            <div class="flex justify-between items-center px-4 py-3 border-b">
+                <h3 class="text-lg font-semibold">ピボットテーブル</h3>
+                <button id="close-pivot" class="text-gray-500 hover:text-gray-700 text-2xl leading-none">&times;</button>
+            </div>
+            <!-- Body -->
+            <div class="p-4 flex flex-col gap-4 overflow-auto flex-grow">
+                <p class="text-sm text-gray-600">行と値の列を選んで「実行」を押してください。列（任意）は必要な場合にのみ選択してください。</p>
+                <div class="flex flex-wrap gap-4 items-end">
+                <div>
+                    <label for="pivot-row" class="block text-xs font-medium text-gray-700">行</label>
+                    <select id="pivot-row" class="mt-1 block w-36 border-gray-300 rounded-md text-sm"></select>
+                </div>
+                <div>
+                    <label for="pivot-col" class="block text-xs font-medium text-gray-700">列（任意）</label>
+                    <select id="pivot-col" class="mt-1 block w-36 border-gray-300 rounded-md text-sm"></select>
+                </div>
+                <div>
+                    <label for="pivot-val" class="block text-xs font-medium text-gray-700">値</label>
+                    <select id="pivot-val" class="mt-1 block w-36 border-gray-300 rounded-md text-sm"></select>
+                </div>
+                <div>
+                    <label for="pivot-agg" class="block text-xs font-medium text-gray-700">集計</label>
+                    <select id="pivot-agg" class="mt-1 block w-32 border-gray-300 rounded-md text-sm">
+                        <option value="sum">合計</option>
+                        <option value="count">件数</option>
+                        <option value="average">平均</option>
+                    </select>
+                </div>
+                <div class="flex gap-2 mt-5">
+                    <button id="execute-pivot" class="px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">実行</button>
+                    <!-- Save pivot button -->
+                    <button id="save-pivot" class="px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">保存</button>
+                </div>
+                </div>
+                <!-- Pivot result -->
+                <div id="pivot-result" class="flex-grow overflow-auto border border-gray-200 rounded-md p-2 bg-gray-50"></div>
+            </div>
+        </div>
+    </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', function () {
@@ -215,6 +260,9 @@
                 ]
             };
 
+            // Assign initial data to home tab
+            state.tabs[0].data = state.tableData;
+
             // --- UI Elements ---
             const chatPanel = document.getElementById('chat-panel');
             const toggleChatBtn = document.getElementById('toggle-chat-btn');
@@ -223,10 +271,21 @@
             const tabDescriptionDisplay = document.getElementById('tab-description-display');
             const tabDescriptionInput = document.getElementById('tab-description-input');
             const saveButton = document.getElementById('save-button');
+            const pivotButton = document.getElementById('pivot-button');
             const tabBarContainer = document.getElementById('tab-bar-container');
             const columnListContainer = document.getElementById('column-list');
             const tabListMenuBtn = document.getElementById('tab-list-menu-btn');
             const tabListDropdown = document.getElementById('tab-list-dropdown');
+            const pivotModal = document.getElementById('pivot-modal');
+            const pivotRowSelect = document.getElementById('pivot-row');
+            const pivotColSelect = document.getElementById('pivot-col');
+            const pivotValSelect = document.getElementById('pivot-val');
+            const pivotAggSelect = document.getElementById('pivot-agg');
+            const executePivotBtn = document.getElementById('execute-pivot');
+            // Save pivot button
+            const savePivotBtn = document.getElementById('save-pivot');
+            const pivotResult = document.getElementById('pivot-result');
+            const closePivotBtn = document.getElementById('close-pivot');
 
             // --- Tabulator Initialization ---
             const table = new Tabulator("#data-table", {
@@ -246,14 +305,21 @@
                 const activeTab = state.tabs.find(t => t.id === tabId);
                 if (!activeTab) return;
 
-                // Restore table state
+                // Restore dataset
+                if (activeTab.data) {
+                    table.setData(activeTab.data);
+                } else {
+                    table.setData(state.tableData);
+                }
+
+                // Restore table state: columns, sort and filters
                 if (activeTab.tableState) {
                     table.setColumns(activeTab.tableState.columns || ALL_COLUMNS.slice(0, 5));
                     table.setSort(activeTab.tableState.sort || []);
                     table.setFilter(activeTab.tableState.filter || []);
                 }
-                
-                // テーブルの状態に合わせてカラム一覧の表示（+ / ×）を更新します。
+
+                // Refresh column list based on current table
                 renderColumns();
 
                 if (!isInitialLoad) {
@@ -261,42 +327,36 @@
                 }
                 updateTabHeader();
             }
-            // --- Column Formatters ---
+
+            // Formatter for delete buttons in headers
             function deleteColumnFormatter(cell, formatterParams, onRendered) {
                 const field = cell.getColumn().getField();
                 const title = cell.getValue();
-
                 const container = document.createElement("div");
                 container.className = "flex items-center justify-between w-full";
-
                 const titleSpan = document.createElement("span");
                 titleSpan.textContent = title;
                 titleSpan.className = "truncate";
-
                 const deleteBtn = document.createElement("button");
-                deleteBtn.innerHTML = "&times;"; // '×' character
+                deleteBtn.innerHTML = "&times;";
                 deleteBtn.className = "delete-column-btn ml-2 text-gray-400 hover:text-red-500 font-bold px-1";
                 deleteBtn.dataset.field = field;
                 deleteBtn.title = "このカラムを削除";
-
                 container.appendChild(titleSpan);
                 container.appendChild(deleteBtn);
-
                 return container;
             }
 
-            // --- Helper Functions ---
             function addColumnToTable(columnDef) {
                 if (columnDef && !table.getColumns().some(c => c.getField() === columnDef.field)) {
                     table.addColumn(columnDef, false);
-                    renderColumns(); // Re-render column list
+                    renderColumns();
                 }
             }
 
             function saveCurrentTableState() {
                 const activeTab = state.tabs.find(t => t.id === state.activeTabId);
                 if (!activeTab) return;
-
                 activeTab.tableState = {
                     columns: table.getColumnDefinitions(),
                     sort: table.getSorters(),
@@ -304,14 +364,13 @@
                 };
             }
 
-            // --- Rendering Functions ---
+            // Rendering functions for tabs and columns
             function renderTabs() {
                 tabBarContainer.innerHTML = '';
                 tabListDropdown.innerHTML = '';
                 state.tabs.forEach(tab => {
                     const tabEl = createTabElement(tab, 'button');
                     tabBarContainer.appendChild(tabEl);
-
                     const listItem = createTabElement(tab, 'a');
                     tabListDropdown.appendChild(listItem);
                 });
@@ -348,8 +407,6 @@
             function renderColumns() {
                 columnListContainer.innerHTML = '';
                 const addedColumnFields = table.getColumns().map(c => c.getField());
-
-                // Sort columns: added ones first, then alphabetically
                 const sortedColumns = [...ALL_COLUMNS].sort((a, b) => {
                     const aIsAdded = addedColumnFields.includes(a.field);
                     const bIsAdded = addedColumnFields.includes(b.field);
@@ -360,22 +417,15 @@
 
                 sortedColumns.forEach(colDef => {
                     const isAdded = addedColumnFields.includes(colDef.field);
-
-                    // Main container for the column item
                     const colEl = document.createElement('div');
                     colEl.className = `column-item flex items-center justify-between p-2 rounded-md text-sm ${isAdded ? 'bg-gray-200 text-gray-500' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`;
                     colEl.dataset.columnDef = JSON.stringify(colDef);
-
-                    // Draggable column name
                     const nameSpan = document.createElement('span');
                     nameSpan.className = `column-name-span truncate flex-grow ${isAdded ? 'cursor-default' : 'cursor-grab'}`;
                     nameSpan.textContent = colDef.title;
                     nameSpan.draggable = !isAdded;
-                    nameSpan.title = colDef.title; // Show full name on hover
-
+                    nameSpan.title = colDef.title;
                     colEl.appendChild(nameSpan);
-
-                    // Add or Remove button
                     if (isAdded) {
                         const removeButton = document.createElement('button');
                         removeButton.className = 'list-remove-column-btn ml-2 px-2 py-0.5 rounded text-gray-500 hover:bg-gray-300 hover:text-red-500 shrink-0';
@@ -390,120 +440,13 @@
                         addButton.title = `${colDef.title} を追加`;
                         colEl.appendChild(addButton);
                     }
-
                     columnListContainer.appendChild(colEl);
                 });
-
-                // Re-attach event listeners
                 addColumnDragListeners();
                 addColumnButtonListeners();
             }
 
-            // --- Event Listeners ---
-            const tableEl = document.getElementById('data-table');
-
-            function handleTabClick(e) {
-                const tabId = e.target.closest('[data-tab-id]')?.dataset.tabId;
-                if (tabId && tabId !== state.activeTabId) {
-                    updateActiveTab(tabId);
-                }
-                if (e.currentTarget.id === 'tab-list-dropdown') {
-                    tabListDropdown.classList.add('hidden');
-                }
-            }
-            tabBarContainer.addEventListener('click', handleTabClick);
-
-            toggleChatBtn.addEventListener('click', () => {
-                chatPanel.classList.toggle('translate-x-full');
-                chatPanel.classList.toggle('opacity-0');
-            });
-            tabListDropdown.addEventListener('click', handleTabClick);
-
-            saveButton.addEventListener('click', () => {
-                const activeTabId = state.activeTabId;
-
-                if (activeTabId === 'home') {
-                    // ホームタブで保存した場合：新しいタブを作成し、ホームタブをリセット
-                    const currentTableState = {
-                        columns: table.getColumnDefinitions(),
-                        sort: table.getSorters(),
-                        filter: table.getFilters(true),
-                    };
-
-                    const newTabId = `tab${state.nextTabNumber++}`;
-                    const newTabName = `タブ${state.nextTabNumber - 1}`;
-                    const newTab = {
-                        id: newTabId,
-                        name: newTabName,
-                        description: `自動生成 (${Math.floor(1000 + Math.random() * 9000)})`,
-                        tableState: currentTableState
-                    };
-                    state.tabs.push(newTab);
-
-                    // ホームタブをリセット
-                    const homeTab = state.tabs.find(t => t.id === 'home');
-                    homeTab.tableState = { columns: [], filter: [], sort: [] };
-
-                    state.activeTabId = newTabId;
-                } else {
-                    // 既存のタブで保存した場合：現在のタブの状態を更新
-                    saveCurrentTableState();
-                }
-
-                saveButton.textContent = '保存しました!';
-                saveButton.classList.replace('bg-blue-600', 'bg-green-500');
-                saveButton.classList.remove('hover:bg-blue-700');
-                setTimeout(() => {
-                    saveButton.textContent = '保存';
-                    saveButton.classList.replace('bg-green-500', 'bg-blue-600');
-                    saveButton.classList.add('hover:bg-blue-700');
-                }, 2000);
-
-                renderTabs();
-            });
-
-            function setupInlineEditor(displayEl, inputEl, onSave) {
-                displayEl.addEventListener('click', () => {
-                    displayEl.classList.add('hidden');
-                    inputEl.classList.remove('hidden');
-                    inputEl.focus();
-                    inputEl.select();
-                });
-
-                const save = () => {
-                    const newValue = inputEl.value.trim();
-                    const activeTab = state.tabs.find(t => t.id === state.activeTabId);
-                    if (newValue && activeTab) {
-                        onSave(activeTab, newValue);
-                        renderTabs();
-                    }
-                    displayEl.classList.remove('hidden');
-                    inputEl.classList.add('hidden');
-                };
-
-                inputEl.addEventListener('blur', save);
-                inputEl.addEventListener('keydown', (e) => {
-                    if (e.key === 'Enter') save();
-                    else if (e.key === 'Escape') {
-                        inputEl.value = displayEl.textContent;
-                        displayEl.classList.remove('hidden');
-                        inputEl.classList.add('hidden');
-                    }
-                });
-            }
-            setupInlineEditor(tabTitleDisplay, tabTitleInput, (tab, value) => tab.name = value);
-            setupInlineEditor(tabDescriptionDisplay, tabDescriptionInput, (tab, value) => tab.description = value);
-
-            tabListMenuBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                tabListDropdown.classList.toggle('hidden');
-            });
-            document.addEventListener('click', (e) => {
-                if (!tabListMenuBtn.contains(e.target) && !tabListDropdown.contains(e.target)) {
-                    tabListDropdown.classList.add('hidden');
-                }
-            });
-
+            // Event listeners for column drag and drop
             function addColumnDragListeners() {
                 const columnNameSpans = document.querySelectorAll('.column-name-span');
                 columnNameSpans.forEach(span => {
@@ -533,12 +476,14 @@
                 });
             }
 
+            // Table events for delete button in headers
+            const tableEl = document.getElementById('data-table');
             tableEl.addEventListener('click', function (e) {
                 if (e.target.matches('.delete-column-btn')) {
                     const field = e.target.dataset.field;
                     if (field) {
                         table.deleteColumn(field);
-                        renderColumns(); // Re-render column list to update its state
+                        renderColumns();
                     }
                 }
             });
@@ -549,6 +494,113 @@
                 addColumnToTable(columnDef);
             });
 
+            // Tab click events
+            function handleTabClick(e) {
+                const tabId = e.target.closest('[data-tab-id]')?.dataset.tabId;
+                if (tabId && tabId !== state.activeTabId) {
+                    updateActiveTab(tabId);
+                }
+                if (e.currentTarget.id === 'tab-list-dropdown') {
+                    tabListDropdown.classList.add('hidden');
+                }
+            }
+            tabBarContainer.addEventListener('click', handleTabClick);
+            tabListDropdown.addEventListener('click', handleTabClick);
+
+            // Toggle chat panel
+            toggleChatBtn.addEventListener('click', () => {
+                chatPanel.classList.toggle('translate-x-full');
+                chatPanel.classList.toggle('opacity-0');
+            });
+
+            // Save button behaviour
+            saveButton.addEventListener('click', () => {
+                const activeTabId = state.activeTabId;
+
+                if (activeTabId === 'home') {
+                    // ホームタブで保存：新タブ作成、ホームをリセット
+                    const currentTableState = {
+                        columns: table.getColumnDefinitions(),
+                        sort: table.getSorters(),
+                        filter: table.getFilters(true),
+                    };
+                    const newTabId = `tab${state.nextTabNumber++}`;
+                    const newTabName = `タブ${state.nextTabNumber - 1}`;
+                    const newTab = {
+                        id: newTabId,
+                        name: newTabName,
+                        description: `自動生成 (${Math.floor(1000 + Math.random() * 9000)})`,
+                        tableState: currentTableState,
+                        data: state.tableData // 普通のタブはオリジナルデータを使用
+                    };
+                    state.tabs.push(newTab);
+                    // ホームの状態をリセット
+                    const homeTab = state.tabs.find(t => t.id === 'home');
+                    homeTab.tableState = { columns: [], filter: [], sort: [] };
+                    state.activeTabId = newTabId;
+                    // 新しいタブに即切り替え
+                    updateActiveTab(newTabId);
+                } else {
+                    // 既存タブ：状態のみ更新
+                    saveCurrentTableState();
+                }
+
+                // ボタンUI
+                saveButton.textContent = '保存しました!';
+                saveButton.classList.replace('bg-blue-600', 'bg-green-500');
+                saveButton.classList.remove('hover:bg-blue-700');
+                setTimeout(() => {
+                    saveButton.textContent = '保存';
+                    saveButton.classList.replace('bg-green-500', 'bg-blue-600');
+                    saveButton.classList.add('hover:bg-blue-700');
+                }, 2000);
+
+                renderTabs();
+            });
+
+            // Inline editing for tab name and description
+            function setupInlineEditor(displayEl, inputEl, onSave) {
+                displayEl.addEventListener('click', () => {
+                    displayEl.classList.add('hidden');
+                    inputEl.classList.remove('hidden');
+                    inputEl.focus();
+                    inputEl.select();
+                });
+                const save = () => {
+                    const newValue = inputEl.value.trim();
+                    const activeTab = state.tabs.find(t => t.id === state.activeTabId);
+                    if (newValue && activeTab) {
+                        onSave(activeTab, newValue);
+                        renderTabs();
+                    }
+                    displayEl.classList.remove('hidden');
+                    inputEl.classList.add('hidden');
+                };
+                inputEl.addEventListener('blur', save);
+                inputEl.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') save();
+                    else if (e.key === 'Escape') {
+                        inputEl.value = displayEl.textContent;
+                        displayEl.classList.remove('hidden');
+                        inputEl.classList.add('hidden');
+                    }
+                });
+            }
+            setupInlineEditor(tabTitleDisplay, tabTitleInput, (tab, value) => tab.name = value);
+            setupInlineEditor(tabDescriptionDisplay, tabDescriptionInput, (tab, value) => tab.description = value);
+
+            // Tab list dropdown toggle
+            tabListMenuBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                tabListDropdown.classList.toggle('hidden');
+            });
+            document.addEventListener('click', (e) => {
+                if (!tabListMenuBtn.contains(e.target) && !tabListDropdown.contains(e.target)) {
+                    tabListDropdown.classList.add('hidden');
+                }
+            });
+
+            // Drag-and-drop sorting for tabs
             let tabSortable, listSortable;
             function initTabSortable() {
                 const onSort = (evt) => {
@@ -556,7 +608,6 @@
                     state.tabs.sort((a, b) => newOrder.indexOf(a.id) - newOrder.indexOf(b.id));
                     renderTabs();
                 };
-
                 if (tabSortable) tabSortable.destroy();
                 tabSortable = Sortable.create(tabBarContainer, {
                     animation: 150,
@@ -564,7 +615,6 @@
                     dragClass: 'sortable-drag',
                     onEnd: onSort,
                 });
-
                 if (listSortable) listSortable.destroy();
                 listSortable = Sortable.create(tabListDropdown, {
                     animation: 150,
@@ -574,6 +624,153 @@
                 });
             }
 
+            // --- Pivot Table Functionality ---
+
+            // When pivot button is clicked, populate the selects based on current table columns and show modal
+            pivotButton.addEventListener('click', () => {
+                const data = table.getData(); // includes filters/sorts
+                // Reset selects
+                pivotRowSelect.innerHTML = '';
+                pivotColSelect.innerHTML = '';
+                pivotValSelect.innerHTML = '';
+                // Columns currently visible
+                const currentColDefs = table.getColumns().map(c => c.getDefinition());
+                // Row options
+                currentColDefs.forEach(def => {
+                    const opt = document.createElement('option');
+                    opt.value = def.field;
+                    opt.textContent = def.title;
+                    pivotRowSelect.appendChild(opt);
+                });
+                // Column options: blank + current
+                const noneOpt2 = document.createElement('option');
+                noneOpt2.value = '';
+                noneOpt2.textContent = 'なし';
+                pivotColSelect.appendChild(noneOpt2);
+                currentColDefs.forEach(def => {
+                    const opt = document.createElement('option');
+                    opt.value = def.field;
+                    opt.textContent = def.title;
+                    pivotColSelect.appendChild(opt);
+                });
+                // Value options: numeric fields
+                if (data.length > 0) {
+                    const sample = data[0];
+                    currentColDefs.forEach(def => {
+                        const value = sample[def.field];
+                        if (typeof value === 'number') {
+                            const opt = document.createElement('option');
+                            opt.value = def.field;
+                            opt.textContent = def.title;
+                            pivotValSelect.appendChild(opt);
+                        }
+                    });
+                }
+                // Clear old result and show modal
+                pivotResult.innerHTML = '';
+                pivotModal.classList.remove('hidden');
+            });
+
+            // Execute pivot
+            executePivotBtn.addEventListener('click', () => {
+                const data = table.getData();
+                const rowField = pivotRowSelect.value;
+                const colField = pivotColSelect.value;
+                const valField = pivotValSelect.value;
+                const aggKey = pivotAggSelect.value;
+                // Clear result
+                $(pivotResult).empty();
+                // Select aggregator
+                const util = $.pivotUtilities;
+                const tpl = util.aggregatorTemplates;
+                let aggregator;
+                if (aggKey === 'sum') {
+                    aggregator = tpl.sum()(valField ? [valField] : []);
+                } else if (aggKey === 'count') {
+                    aggregator = tpl.count()();
+                } else if (aggKey === 'average') {
+                    aggregator = tpl.average()(valField ? [valField] : []);
+                } else {
+                    aggregator = tpl.sum()(valField ? [valField] : []);
+                }
+                // Options
+                const opts = {
+                    rows: rowField ? [rowField] : [],
+                    cols: colField ? [colField] : [],
+                    aggregator: aggregator,
+                };
+                // Build pivot
+                $(pivotResult).pivot(data, opts);
+            });
+
+            // Save pivot as a new tab
+            savePivotBtn.addEventListener('click', () => {
+                const pivotTableEl = pivotResult.querySelector('table');
+                if (!pivotTableEl) {
+                    return; // nothing to save
+                }
+                // Row title from select
+                const rowFieldTitle = pivotRowSelect.options[pivotRowSelect.selectedIndex]?.textContent || '行';
+                const colFieldTitle = pivotColSelect.value ? pivotColSelect.options[pivotColSelect.selectedIndex].textContent : '';
+                const aggKey = pivotAggSelect.value;
+                let aggLabel = '';
+                if (aggKey === 'sum') aggLabel = '合計';
+                else if (aggKey === 'count') aggLabel = '件数';
+                else if (aggKey === 'average') aggLabel = '平均';
+                else aggLabel = aggKey;
+                // Parse headers
+                const headerRow = pivotTableEl.rows[0];
+                const colNames = [];
+                for (let i = 1; i < headerRow.cells.length; i++) {
+                    colNames.push(headerRow.cells[i].textContent.trim());
+                }
+                // Build columns
+                const pivotColumns = [];
+                pivotColumns.push({ title: rowFieldTitle, field: 'row', width: 150 });
+                colNames.forEach((name, idx) => {
+                    pivotColumns.push({ title: name, field: `col${idx}`, hozAlign: 'right', sorter: 'number' });
+                });
+                // Build data
+                const pivotData = [];
+                for (let r = 1; r < pivotTableEl.rows.length; r++) {
+                    const rowCells = pivotTableEl.rows[r].cells;
+                    const rowObj = {};
+                    rowObj['row'] = rowCells[0].textContent.trim();
+                    for (let c = 1; c < rowCells.length; c++) {
+                        const raw = rowCells[c].textContent.trim();
+                        const num = parseFloat(raw.replace(/,/g, ''));
+                        rowObj[`col${c-1}`] = isNaN(num) ? raw : num;
+                    }
+                    pivotData.push(rowObj);
+                }
+                // Create new tab
+                const newTabId = `tab${state.nextTabNumber++}`;
+                const newTabName = `ピボット${state.nextTabNumber - 1}`;
+                const descriptionParts = [];
+                descriptionParts.push(`${rowFieldTitle}`);
+                if (colFieldTitle) descriptionParts.push(`×${colFieldTitle}`);
+                descriptionParts.push(`${aggLabel}`);
+                const newTab = {
+                    id: newTabId,
+                    name: newTabName,
+                    description: descriptionParts.join(' '),
+                    tableState: { columns: pivotColumns, filter: [], sort: [] },
+                    data: pivotData
+                };
+                state.tabs.push(newTab);
+                state.activeTabId = newTabId;
+                renderTabs();
+                updateActiveTab(newTabId);
+                // Close modal
+                pivotModal.classList.add('hidden');
+            });
+
+            // Close pivot modal
+            closePivotBtn.addEventListener('click', () => {
+                pivotModal.classList.add('hidden');
+            });
+
+            // Initialize
             renderColumns();
             renderTabs();
             updateActiveTab(state.activeTabId, true);
@@ -582,3 +779,4 @@
 </body>
 
 </html>
+
