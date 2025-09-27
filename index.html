@@ -72,6 +72,135 @@
             border-style: dashed;
         }
 
+        .tabulator-col-filter {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .tabulator-col-filter input,
+        .tabulator-col-filter select {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .excel-filter-trigger {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 26px;
+            height: 26px;
+            border-radius: 6px;
+            border: 1px solid transparent;
+            background-color: #eef2ff;
+            color: #4f46e5;
+            cursor: pointer;
+            transition: background-color 0.15s ease, border-color 0.15s ease;
+        }
+
+        .excel-filter-trigger:hover,
+        .excel-filter-trigger:focus {
+            background-color: #e0e7ff;
+            border-color: #c7d2fe;
+            outline: none;
+        }
+
+        .excel-filter-dropdown {
+            position: fixed;
+            z-index: 1000;
+            width: 240px;
+            max-height: 320px;
+            background-color: #ffffff;
+            border: 1px solid #d1d5db;
+            border-radius: 0.5rem;
+            box-shadow: 0 10px 25px rgba(15, 23, 42, 0.15);
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .excel-filter-title {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #374151;
+        }
+
+        .excel-filter-search {
+            width: 100%;
+            border: 1px solid #d1d5db;
+            border-radius: 0.375rem;
+            padding: 6px 8px;
+            font-size: 0.75rem;
+        }
+
+        .excel-filter-select-all {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: #111827;
+        }
+
+        .excel-filter-values {
+            overflow-y: auto;
+            max-height: 180px;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.375rem;
+            padding: 6px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .excel-filter-value-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.75rem;
+            color: #1f2937;
+        }
+
+        .excel-filter-empty {
+            font-size: 0.75rem;
+            color: #6b7280;
+            text-align: center;
+            padding: 12px 0;
+        }
+
+        .excel-filter-buttons {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+
+        .excel-filter-buttons button {
+            font-size: 0.75rem;
+            font-weight: 500;
+            padding: 6px 12px;
+            border-radius: 0.375rem;
+            transition: background-color 0.15s ease;
+        }
+
+        .excel-filter-apply {
+            background-color: #2563eb;
+            color: #ffffff;
+        }
+
+        .excel-filter-apply:hover {
+            background-color: #1d4ed8;
+        }
+
+        .excel-filter-clear {
+            background-color: #e5e7eb;
+            color: #374151;
+        }
+
+        .excel-filter-clear:hover {
+            background-color: #d1d5db;
+        }
+
         ::-webkit-scrollbar {
             width: 8px;
             height: 8px;
@@ -307,8 +436,374 @@
                 initialFilter: [],
             });
 
+            let excelFilterState = {};
+            const excelFilterFunctions = {};
+            let activeExcelDropdown = null;
+            let activeExcelDropdownTrigger = null;
+
+            function getActiveTab() {
+                return state.tabs.find(t => t.id === state.activeTabId);
+            }
+
+            function createExcelValueKey(value) {
+                if (value === null) return '__NULL__';
+                if (value === undefined) return '__UNDEFINED__';
+                if (value === '') return '__EMPTY__';
+                if (typeof value === 'number') {
+                    return Number.isNaN(value) ? '__NAN__' : `number:${value}`;
+                }
+                if (value instanceof Date) {
+                    return `date:${value.getTime()}`;
+                }
+                return `${typeof value}:${String(value)}`;
+            }
+
+            function formatExcelFilterLabel(value, column) {
+                if (value === null || value === undefined || value === '') {
+                    return '（空白）';
+                }
+                if (value instanceof Date) {
+                    return value.toLocaleDateString('ja-JP');
+                }
+                if (typeof value === 'number') {
+                    return new Intl.NumberFormat('ja-JP').format(value);
+                }
+                return String(value);
+            }
+
+            function getUniqueColumnValues(column) {
+                const field = column.getField();
+                const activeTab = getActiveTab();
+                const baseData = activeTab && Array.isArray(activeTab.data) ? activeTab.data : state.tableData;
+                const displayData = typeof table.getData === 'function' ? table.getData() : [];
+                const map = new Map();
+                const addValue = (rawValue) => {
+                    const key = createExcelValueKey(rawValue);
+                    if (!map.has(key)) {
+                        map.set(key, {
+                            key,
+                            rawValue,
+                            label: formatExcelFilterLabel(rawValue, column),
+                        });
+                    }
+                };
+                displayData.forEach(row => addValue(row[field]));
+                if (Array.isArray(baseData)) {
+                    baseData.forEach(row => addValue(row[field]));
+                }
+                const values = Array.from(map.values());
+                values.sort((a, b) => {
+                    if (typeof a.rawValue === 'number' && typeof b.rawValue === 'number') {
+                        return a.rawValue - b.rawValue;
+                    }
+                    return a.label.localeCompare(b.label, 'ja', { numeric: true, sensitivity: 'base' });
+                });
+                return values;
+            }
+
+            function cloneValueFilterState(source = excelFilterState) {
+                const clone = {};
+                Object.entries(source).forEach(([field, keys]) => {
+                    clone[field] = [...keys];
+                });
+                return clone;
+            }
+
+            function isExcelFilterDescriptor(descriptor) {
+                if (!descriptor) return false;
+                if (descriptor.type === 'function' && descriptor.func && descriptor.func.__excelFilter) {
+                    return true;
+                }
+                return false;
+            }
+
+            function closeActiveExcelDropdown() {
+                if (activeExcelDropdown) {
+                    activeExcelDropdown.remove();
+                    activeExcelDropdown = null;
+                }
+                activeExcelDropdownTrigger = null;
+            }
+
+            function removeExcelFilterForField(field) {
+                const func = excelFilterFunctions[field];
+                if (func) {
+                    table.removeFilter(func);
+                    delete excelFilterFunctions[field];
+                }
+                if (excelFilterState[field]) {
+                    delete excelFilterState[field];
+                }
+                const activeTab = getActiveTab();
+                if (activeTab && activeTab.valueFilters) {
+                    delete activeTab.valueFilters[field];
+                }
+            }
+
+            function clearExcelValueFilter(column) {
+                const field = column.getField();
+                if (!field) return;
+                removeExcelFilterForField(field);
+            }
+
+            function setExcelValueFilter(column, selectionSet, totalCount) {
+                const field = column.getField();
+                if (!field) return;
+
+                const previous = excelFilterFunctions[field];
+                if (previous) {
+                    table.removeFilter(previous);
+                    delete excelFilterFunctions[field];
+                }
+
+                if (selectionSet.size === totalCount) {
+                    delete excelFilterState[field];
+                    const activeTab = getActiveTab();
+                    if (activeTab && activeTab.valueFilters) {
+                        delete activeTab.valueFilters[field];
+                    }
+                    return;
+                }
+
+                const filterFn = function (data) {
+                    return selectionSet.has(createExcelValueKey(data[field]));
+                };
+                filterFn.__excelFilter = true;
+                filterFn.__excelFilterField = field;
+                filterFn.__excelFilterKeys = Array.from(selectionSet);
+
+                excelFilterFunctions[field] = filterFn;
+                excelFilterState[field] = Array.from(selectionSet);
+                table.addFilter(filterFn);
+
+                const activeTab = getActiveTab();
+                if (activeTab) {
+                    if (!activeTab.valueFilters) activeTab.valueFilters = {};
+                    activeTab.valueFilters[field] = Array.from(selectionSet);
+                }
+            }
+
+            function applyStoredValueFilters(tab) {
+                Object.keys(excelFilterFunctions).forEach(field => {
+                    table.removeFilter(excelFilterFunctions[field]);
+                    delete excelFilterFunctions[field];
+                });
+                excelFilterState = {};
+
+                if (!tab || !tab.valueFilters) return;
+                Object.entries(tab.valueFilters).forEach(([field, keys]) => {
+                    const column = table.getColumn(field);
+                    if (!column) return;
+                    const selectionSet = new Set(keys);
+                    const allValues = getUniqueColumnValues(column);
+                    const totalCount = allValues.length || selectionSet.size;
+                    setExcelValueFilter(column, selectionSet, totalCount);
+                });
+            }
+
+            function openExcelFilterDropdown(column, triggerEl) {
+                closeActiveExcelDropdown();
+
+                const uniqueValues = getUniqueColumnValues(column);
+                const totalCount = uniqueValues.length;
+                const field = column.getField();
+                const initialKeys = excelFilterState[field]
+                    ? new Set(excelFilterState[field])
+                    : new Set(uniqueValues.map(item => item.key));
+                const selectionSet = new Set(initialKeys);
+
+                const dropdown = document.createElement('div');
+                dropdown.className = 'excel-filter-dropdown';
+
+                const title = document.createElement('div');
+                title.className = 'excel-filter-title';
+                title.textContent = column.getDefinition()?.title || field || 'フィルタ';
+                dropdown.appendChild(title);
+
+                const searchInput = document.createElement('input');
+                searchInput.type = 'text';
+                searchInput.placeholder = '値を検索';
+                searchInput.className = 'excel-filter-search';
+                dropdown.appendChild(searchInput);
+
+                const selectAllLabel = document.createElement('label');
+                selectAllLabel.className = 'excel-filter-select-all';
+                const selectAllCheckbox = document.createElement('input');
+                selectAllCheckbox.type = 'checkbox';
+                selectAllLabel.appendChild(selectAllCheckbox);
+                const selectAllText = document.createElement('span');
+                selectAllText.textContent = '全て選択';
+                selectAllLabel.appendChild(selectAllText);
+                dropdown.appendChild(selectAllLabel);
+
+                const valuesContainer = document.createElement('div');
+                valuesContainer.className = 'excel-filter-values';
+                dropdown.appendChild(valuesContainer);
+
+                const buttonsContainer = document.createElement('div');
+                buttonsContainer.className = 'excel-filter-buttons';
+
+                const clearBtn = document.createElement('button');
+                clearBtn.type = 'button';
+                clearBtn.className = 'excel-filter-clear';
+                clearBtn.textContent = 'クリア';
+
+                const applyBtn = document.createElement('button');
+                applyBtn.type = 'button';
+                applyBtn.className = 'excel-filter-apply';
+                applyBtn.textContent = '適用';
+
+                buttonsContainer.appendChild(clearBtn);
+                buttonsContainer.appendChild(applyBtn);
+                dropdown.appendChild(buttonsContainer);
+
+                function updateSelectAllState() {
+                    const selectedCount = selectionSet.size;
+                    selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < uniqueValues.length;
+                    selectAllCheckbox.checked = uniqueValues.length > 0 && selectedCount === uniqueValues.length;
+                }
+
+                function renderValueList(filterText = '') {
+                    valuesContainer.innerHTML = '';
+                    const lowerText = filterText.trim().toLowerCase();
+                    const filteredValues = lowerText
+                        ? uniqueValues.filter(item => {
+                            const labelMatch = item.label.toLowerCase().includes(lowerText);
+                            const rawString = item.rawValue === null || item.rawValue === undefined ? '' : String(item.rawValue);
+                            return labelMatch || rawString.toLowerCase().includes(lowerText);
+                        })
+                        : uniqueValues;
+
+                    if (filteredValues.length === 0) {
+                        const empty = document.createElement('div');
+                        empty.className = 'excel-filter-empty';
+                        empty.textContent = '一致する値がありません';
+                        valuesContainer.appendChild(empty);
+                        updateSelectAllState();
+                        return;
+                    }
+
+                    filteredValues.forEach(item => {
+                        const label = document.createElement('label');
+                        label.className = 'excel-filter-value-item';
+                        const checkbox = document.createElement('input');
+                        checkbox.type = 'checkbox';
+                        checkbox.dataset.valueKey = item.key;
+                        checkbox.checked = selectionSet.has(item.key);
+                        checkbox.addEventListener('change', () => {
+                            if (checkbox.checked) {
+                                selectionSet.add(item.key);
+                            } else {
+                                selectionSet.delete(item.key);
+                            }
+                            updateSelectAllState();
+                        });
+                        const span = document.createElement('span');
+                        span.textContent = item.label;
+                        label.appendChild(checkbox);
+                        label.appendChild(span);
+                        valuesContainer.appendChild(label);
+                    });
+                }
+
+                selectAllCheckbox.addEventListener('change', () => {
+                    if (selectAllCheckbox.checked) {
+                        uniqueValues.forEach(item => selectionSet.add(item.key));
+                    } else {
+                        uniqueValues.forEach(item => selectionSet.delete(item.key));
+                    }
+                    renderValueList(searchInput.value);
+                    updateSelectAllState();
+                });
+
+                searchInput.addEventListener('input', () => {
+                    renderValueList(searchInput.value);
+                    updateSelectAllState();
+                });
+
+                clearBtn.addEventListener('click', () => {
+                    clearExcelValueFilter(column);
+                    closeActiveExcelDropdown();
+                });
+
+                applyBtn.addEventListener('click', () => {
+                    setExcelValueFilter(column, selectionSet, totalCount);
+                    const activeTab = getActiveTab();
+                    if (activeTab) {
+                        if (!activeTab.valueFilters) activeTab.valueFilters = {};
+                        if (selectionSet.size === totalCount) {
+                            delete activeTab.valueFilters[column.getField()];
+                        } else {
+                            activeTab.valueFilters[column.getField()] = Array.from(selectionSet);
+                        }
+                    }
+                    closeActiveExcelDropdown();
+                });
+
+                renderValueList();
+                updateSelectAllState();
+
+                document.body.appendChild(dropdown);
+                const rect = triggerEl.getBoundingClientRect();
+                const dropdownWidth = dropdown.offsetWidth || 240;
+                const maxLeft = Math.max(8, window.innerWidth - dropdownWidth - 8);
+                const initialLeft = Math.min(Math.max(8, rect.left), maxLeft);
+                dropdown.style.left = `${initialLeft}px`;
+                let top = rect.bottom + 4;
+                dropdown.style.top = `${top}px`;
+
+                let dropdownRect = dropdown.getBoundingClientRect();
+                if (dropdownRect.right > window.innerWidth) {
+                    const left = Math.max(8, window.innerWidth - dropdownRect.width - 8);
+                    dropdown.style.left = `${left}px`;
+                    dropdownRect = dropdown.getBoundingClientRect();
+                }
+                if (dropdownRect.bottom > window.innerHeight) {
+                    top = Math.max(8, rect.top - dropdownRect.height - 4);
+                    dropdown.style.top = `${top}px`;
+                }
+
+                activeExcelDropdown = dropdown;
+                activeExcelDropdownTrigger = triggerEl;
+            }
+
+            function setupExcelFilters() {
+                if (!table || typeof table.getColumns !== 'function') return;
+                table.getColumns().forEach(column => {
+                    const headerEl = column.getElement();
+                    if (!headerEl) return;
+                    let filterHolder = headerEl.querySelector('.tabulator-col-filter');
+                    if (!filterHolder) {
+                        filterHolder = document.createElement('div');
+                        filterHolder.className = 'tabulator-col-filter';
+                        headerEl.appendChild(filterHolder);
+                    }
+                    if (filterHolder.querySelector('.excel-filter-trigger')) return;
+                    const trigger = document.createElement('button');
+                    trigger.type = 'button';
+                    trigger.className = 'excel-filter-trigger';
+                    trigger.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path d="M3 4a1 1 0 0 1 1-1h12a1 1 0 0 1 .78 1.63l-4.53 5.43a1 1 0 0 0-.25.66v3.79a1 1 0 0 1-1.45.9l-2-1A1 1 0 0 1 8 13.52v-2.8a1 1 0 0 0-.25-.66L3.22 4.63A1 1 0 0 1 3 4Z"/></svg>';
+                    trigger.addEventListener('click', (event) => {
+                        event.stopPropagation();
+                        openExcelFilterDropdown(column, trigger);
+                    });
+                    filterHolder.appendChild(trigger);
+                });
+            }
+
+            document.addEventListener('click', (event) => {
+                if (!activeExcelDropdown) return;
+                if (activeExcelDropdown.contains(event.target)) return;
+                if (event.target.closest('.excel-filter-trigger')) return;
+                closeActiveExcelDropdown();
+            });
+
+            window.addEventListener('resize', () => closeActiveExcelDropdown());
+            window.addEventListener('scroll', () => closeActiveExcelDropdown());
+
             // --- Core Functions ---
             function updateActiveTab(tabId, isInitialLoad = false) {
+                closeActiveExcelDropdown();
                 state.activeTabId = tabId;
                 const activeTab = state.tabs.find(t => t.id === tabId);
                 if (!activeTab) return;
@@ -350,9 +845,11 @@
                     if (activeTab.tableState) {
                         table.setColumns(activeTab.tableState.columns || ALL_COLUMNS.slice(0, 5));
                         table.setSort(activeTab.tableState.sort || []);
-                        table.setFilter(activeTab.tableState.filter || []);
+                        const nonExcelFilters = (activeTab.tableState.filter || []).filter(f => !isExcelFilterDescriptor(f));
+                        table.setFilter(nonExcelFilters);
+                        applyStoredValueFilters(activeTab);
                     }
-                    
+
                     // Refresh column list based on current table
                     renderColumns();
                 }
@@ -395,8 +892,9 @@
                 activeTab.tableState = {
                     columns: table.getColumnDefinitions(),
                     sort: table.getSorters(),
-                    filter: table.getFilters(true),
+                    filter: (table.getFilters(true) || []).filter(f => !isExcelFilterDescriptor(f)),
                 };
+                activeTab.valueFilters = cloneValueFilterState();
             }
 
             // Rendering functions for tabs and columns
@@ -497,6 +995,7 @@
                 });
                 addColumnDragListeners();
                 addColumnButtonListeners();
+                setupExcelFilters();
             }
 
             // Event listeners for column drag and drop
@@ -523,6 +1022,8 @@
                         addColumnToTable(columnDef);
                     } else if (e.target.matches('.list-remove-column-btn')) {
                         const field = e.target.dataset.field;
+                        removeExcelFilterForField(field);
+                        closeActiveExcelDropdown();
                         table.deleteColumn(field);
                         renderColumns();
                     }
@@ -535,6 +1036,8 @@
                 if (e.target.matches('.delete-column-btn')) {
                     const field = e.target.dataset.field;
                     if (field) {
+                        removeExcelFilterForField(field);
+                        closeActiveExcelDropdown();
                         table.deleteColumn(field);
                         renderColumns();
                     }
@@ -640,10 +1143,11 @@
 
                 if (activeTabId === 'home') {
                     // ホームタブで保存：新タブ作成、ホームをリセット
+                    const filtersForState = (table.getFilters(true) || []).filter(f => !isExcelFilterDescriptor(f));
                     const currentTableState = {
                         columns: table.getColumnDefinitions(),
                         sort: table.getSorters(),
-                        filter: table.getFilters(true),
+                        filter: filtersForState,
                     };
                     const newTabId = `tab${state.nextTabNumber++}`;
                     const newTabName = `タブ${state.nextTabNumber - 1}`;
@@ -652,12 +1156,14 @@
                         name: newTabName,
                         description: `自動生成 (${Math.floor(1000 + Math.random() * 9000)})`,
                         tableState: currentTableState,
-                        data: state.tableData // 普通のタブはオリジナルデータを使用
+                        data: state.tableData, // 普通のタブはオリジナルデータを使用
+                        valueFilters: cloneValueFilterState(),
                     };
                     state.tabs.push(newTab);
                     // ホームの状態をリセット
                     const homeTab = state.tabs.find(t => t.id === 'home');
                     homeTab.tableState = { columns: [], filter: [], sort: [] };
+                    homeTab.valueFilters = {};
                     state.activeTabId = newTabId;
                     // 新しいタブに即切り替え
                     updateActiveTab(newTabId);
