@@ -1,3 +1,6 @@
+以下のコードを編集して、Excel のフィルタ機能の、チェックボックスで値を選択できる部分を実装してください。列ヘッダーのフィルタをクリックすると、その列に存在する値を一覧表示（データ型によってはわかりやすくまとめる）し、チェックボックスで複数選択して絞り込みできるようにしてください。文字の部分一致検索は既にあるので、それは残して。それ以外の余計な絶対に変更はしないで。
+完成したコードをコードブロックにすべて入れて。
+
 <!DOCTYPE html>
 <html lang="ja">
 
@@ -18,6 +21,7 @@
 
     <!-- Tabulator.js script -->
     <script type="text/javascript" src="https://unpkg.com/tabulator-tables@5.5.2/dist/js/tabulator.min.js"></script>
+    <script type="text/javascript" src="https://oss.sheetjs.com/sheetjs/xlsx.full.min.js"></script>
 
     <!-- PivotTable.js -->
     <script src="https://cdn.jsdelivr.net/npm/pivottable@2.23.0/dist/pivot.min.js"></script>
@@ -108,18 +112,21 @@
         <div class="flex items-center gap-4 min-w-0">
             <div class="min-w-0">
                 <div class="flex items-center gap-2">
-                <h1 id="tab-title-display" class="text-lg font-semibold text-gray-800 cursor-pointer truncate" title="クリックして編集"></h1>
+                <h1 id="tab-title-display" class="text-lg font-semibold text-gray-800 cursor-pointer truncate" title="ダブルクリックして編集"></h1>
                 <input type="text" id="tab-title-input" class="text-lg font-semibold border border-blue-400 rounded-md px-2 py-0.5 hidden w-full">
                 </div>
                 <div class="flex items-center gap-2">
-                <p id="tab-description-display" class="text-sm text-gray-500 cursor-pointer truncate" title="クリックして編集"></p>
+                <p id="tab-description-display" class="text-sm text-gray-500 cursor-pointer truncate" title="ダブルクリックして編集"></p>
                 <input type="text" id="tab-description-input" class="text-sm text-gray-500 border border-blue-400 rounded-md px-2 py-0.5 hidden w-full">
                 </div>
             </div>
         </div>
         <div class="flex items-center gap-4">
             <button id="save-button" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                保存
+                タブに保存
+            </button>
+            <button id="export-button" class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                エクスポート
             </button>
             <!-- Pivot trigger button -->
             <button id="pivot-button" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
@@ -137,7 +144,7 @@
 
     <!-- Main Content -->
     <main class="flex-grow p-2 overflow-hidden relative">
-        <div class="h-full grid grid-cols-[240px_1fr] gap-2">
+        <div id="main-grid" class="h-full grid grid-cols-[240px_1fr] gap-2">
             <!-- Left Sidebar: Column List -->
             <aside class="bg-white rounded-lg border border-gray-200 flex flex-col">
                 <h2 class="text-sm font-semibold p-3 border-b border-gray-200 text-gray-700">カラム一覧</h2>
@@ -150,6 +157,7 @@
             <!-- Center: Data Table -->
             <section class="bg-white rounded-lg border border-gray-200 flex flex-col overflow-hidden">
                 <div id="data-table" class="flex-grow h-full"></div>
+                <div id="pivot-table-display" class="hidden flex-grow h-full overflow-auto p-2"></div>
             </section>
         </div>
 
@@ -305,22 +313,49 @@
                 const activeTab = state.tabs.find(t => t.id === tabId);
                 if (!activeTab) return;
 
-                // Restore dataset
-                if (activeTab.data) {
-                    table.setData(activeTab.data);
+                const dataTableContainer = document.getElementById('data-table');
+                const pivotDisplayContainer = document.getElementById('pivot-table-display');
+                const columnListAside = document.querySelector('aside');
+                const mainGrid = document.getElementById('main-grid');
+
+                if (activeTab.isPivot) {
+                    // It's a pivot tab
+                    dataTableContainer.classList.add('hidden');
+                    pivotDisplayContainer.classList.remove('hidden');
+                    pivotDisplayContainer.innerHTML = activeTab.pivotHTML;
+                    
+                    // Hide the column list as it's not applicable
+                    columnListAside.classList.add('hidden');
+                    // Make the main content area take the full width
+                    mainGrid.style.gridTemplateColumns = '1fr';
+
                 } else {
-                    table.setData(state.tableData);
-                }
+                    // It's a regular tabulator tab
+                    dataTableContainer.classList.remove('hidden');
+                    pivotDisplayContainer.classList.add('hidden');
+                    pivotDisplayContainer.innerHTML = ''; // Clear it
 
-                // Restore table state: columns, sort and filters
-                if (activeTab.tableState) {
-                    table.setColumns(activeTab.tableState.columns || ALL_COLUMNS.slice(0, 5));
-                    table.setSort(activeTab.tableState.sort || []);
-                    table.setFilter(activeTab.tableState.filter || []);
-                }
+                    // Show the column list
+                    columnListAside.classList.remove('hidden');
+                    mainGrid.style.gridTemplateColumns = '240px 1fr';
 
-                // Refresh column list based on current table
-                renderColumns();
+                    // Restore dataset
+                    if (activeTab.data) {
+                        table.setData(activeTab.data);
+                    } else {
+                        table.setData(state.tableData);
+                    }
+
+                    // Restore table state: columns, sort and filters
+                    if (activeTab.tableState) {
+                        table.setColumns(activeTab.tableState.columns || ALL_COLUMNS.slice(0, 5));
+                        table.setSort(activeTab.tableState.sort || []);
+                        table.setFilter(activeTab.tableState.filter || []);
+                    }
+                    
+                    // Refresh column list based on current table
+                    renderColumns();
+                }
 
                 if (!isInitialLoad) {
                     renderTabs();
@@ -381,16 +416,34 @@
             function createTabElement(tab, type) {
                 const el = document.createElement(type);
                 el.dataset.tabId = tab.id;
-                el.textContent = tab.name;
+
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = tab.name;
+                nameSpan.className = 'tab-name-span flex-grow truncate';
+                if (tab.id !== 'home') {
+                    nameSpan.title = 'ダブルクリックして名前を編集';
+                }
+
                 if (type === 'button') {
-                    el.className = `px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors whitespace-nowrap ${tab.id === state.activeTabId
+                    el.className = `px-3 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors whitespace-nowrap flex items-center gap-1.5 ${tab.id === state.activeTabId
                         ? 'border-blue-600 text-blue-600 bg-blue-50'
                         : 'border-transparent text-gray-600 hover:bg-gray-100 hover:text-gray-800'
                         }`;
                 } else {
                     el.href = '#';
-                    el.className = `block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 ${tab.id === state.activeTabId ? 'bg-gray-100' : ''}`;
+                    el.className = `block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center justify-between ${tab.id === state.activeTabId ? 'bg-gray-100' : ''}`;
                 }
+
+                el.appendChild(nameSpan);
+
+                if (tab.id !== 'home') {
+                    const closeBtn = document.createElement('button');
+                    closeBtn.innerHTML = '&times;';
+                    closeBtn.className = 'delete-tab-btn text-gray-400 hover:text-red-500 font-bold rounded-full w-4 h-4 flex items-center justify-center text-base shrink-0';
+                    closeBtn.title = `タブ「${tab.name}」を削除`;
+                    el.appendChild(closeBtn);
+                }
+
                 return el;
             }
 
@@ -496,6 +549,23 @@
 
             // Tab click events
             function handleTabClick(e) {
+                // Handle delete button click
+                if (e.target.matches('.delete-tab-btn')) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    const tabIdToDelete = e.target.closest('[data-tab-id]').dataset.tabId;
+                    const tabToDelete = state.tabs.find(t => t.id === tabIdToDelete);
+                    if (tabToDelete && confirm(`タブ「${tabToDelete.name}」を削除しますか？`)) {
+                        state.tabs = state.tabs.filter(t => t.id !== tabIdToDelete);
+                        if (state.activeTabId === tabIdToDelete) {
+                            updateActiveTab('home');
+                        }
+                        renderTabs();
+                    }
+                    return; // Stop further processing
+                }
+
+                // Handle tab selection
                 const tabId = e.target.closest('[data-tab-id]')?.dataset.tabId;
                 if (tabId && tabId !== state.activeTabId) {
                     updateActiveTab(tabId);
@@ -506,6 +576,57 @@
             }
             tabBarContainer.addEventListener('click', handleTabClick);
             tabListDropdown.addEventListener('click', handleTabClick);
+
+            function handleTabDoubleClick(e) {
+                const span = e.target.closest('.tab-name-span');
+                if (!span) return;
+
+                const tabEl = span.closest('[data-tab-id]');
+                if (!tabEl) return;
+                
+                const tabId = tabEl.dataset.tabId;
+                const tab = state.tabs.find(t => t.id === tabId);
+
+                if (!tab || tab.id === 'home') return;
+
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.value = tab.name;
+                
+                let widthClass = 'w-24';
+                if (tabEl.tagName === 'A') {
+                    widthClass = 'w-40'; // Wider input for dropdown list
+                }
+                input.className = `text-sm font-medium border border-blue-400 rounded-md px-1 py-0 bg-white ${widthClass}`;
+
+                span.replaceWith(input);
+                input.focus();
+                input.select();
+
+                const finishEditing = (save) => {
+                    if (save) {
+                        const newValue = input.value.trim();
+                        if (newValue) {
+                            tab.name = newValue;
+                        }
+                    }
+                    renderTabs();
+                    updateTabHeader();
+                };
+
+                input.addEventListener('blur', () => finishEditing(true));
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        finishEditing(true);
+                    } else if (e.key === 'Escape') {
+                        finishEditing(false);
+                    }
+                });
+            }
+
+            tabBarContainer.addEventListener('dblclick', handleTabDoubleClick);
+            tabListDropdown.addEventListener('dblclick', handleTabDoubleClick);
 
             // Toggle chat panel
             toggleChatBtn.addEventListener('click', () => {
@@ -550,7 +671,7 @@
                 saveButton.classList.replace('bg-blue-600', 'bg-green-500');
                 saveButton.classList.remove('hover:bg-blue-700');
                 setTimeout(() => {
-                    saveButton.textContent = '保存';
+                    saveButton.textContent = 'タブに保存';
                     saveButton.classList.replace('bg-green-500', 'bg-blue-600');
                     saveButton.classList.add('hover:bg-blue-700');
                 }, 2000);
@@ -558,9 +679,31 @@
                 renderTabs();
             });
 
+            // Export button behaviour
+            const exportButton = document.getElementById('export-button');
+            exportButton.addEventListener('click', () => {
+                const activeTab = state.tabs.find(t => t.id === state.activeTabId);
+                if (!activeTab) return;
+
+                if (activeTab.isPivot) {
+                    // Handle Pivot Table Export
+                    const pivotDisplay = document.getElementById('pivot-table-display');
+                    const pivotTableEl = pivotDisplay.querySelector('table');
+                    if (pivotTableEl) {
+                        const wb = XLSX.utils.book_new();
+                        const ws = XLSX.utils.table_to_sheet(pivotTableEl);
+                        XLSX.utils.book_append_sheet(wb, ws, 'ピボットデータ');
+                        XLSX.writeFile(wb, `${activeTab.name}.xlsx`);
+                    }
+                } else {
+                    // Handle Regular Table Export
+                    table.download("xlsx", `${activeTab.name}.xlsx`, { sheetName: "データ" });
+                }
+            });
+
             // Inline editing for tab name and description
             function setupInlineEditor(displayEl, inputEl, onSave) {
-                displayEl.addEventListener('click', () => {
+                displayEl.addEventListener('dblclick', () => {
                     displayEl.classList.add('hidden');
                     inputEl.classList.remove('hidden');
                     inputEl.focus();
@@ -608,18 +751,32 @@
                     state.tabs.sort((a, b) => newOrder.indexOf(a.id) - newOrder.indexOf(b.id));
                     renderTabs();
                 };
+
+                const onMoveCallback = (evt) => {
+                    // If dragging over the home tab, only allow dropping *after* it.
+                    if (evt.related.dataset.tabId === 'home' && !evt.willInsertAfter) {
+                        return false;
+                    }
+                    return true;
+                };
+
                 if (tabSortable) tabSortable.destroy();
                 tabSortable = Sortable.create(tabBarContainer, {
                     animation: 150,
                     ghostClass: 'sortable-ghost',
                     dragClass: 'sortable-drag',
+                    filter: '[data-tab-id="home"]', // Prevent home tab from being dragged
+                    onMove: onMoveCallback,
                     onEnd: onSort,
                 });
+
                 if (listSortable) listSortable.destroy();
                 listSortable = Sortable.create(tabListDropdown, {
                     animation: 150,
                     ghostClass: 'sortable-ghost',
                     dragClass: 'sortable-drag',
+                    filter: '[data-tab-id="home"]', // Prevent home tab from being dragged in list
+                    onMove: onMoveCallback,
                     onEnd: onSort,
                 });
             }
@@ -705,11 +862,11 @@
 
             // Save pivot as a new tab
             savePivotBtn.addEventListener('click', () => {
-                const pivotTableEl = pivotResult.querySelector('table');
-                if (!pivotTableEl) {
+                const pivotHTML = pivotResult.innerHTML;
+                if (!pivotHTML || !pivotResult.querySelector('table')) {
                     return; // nothing to save
                 }
-                // Row title from select
+
                 const rowFieldTitle = pivotRowSelect.options[pivotRowSelect.selectedIndex]?.textContent || '行';
                 const colFieldTitle = pivotColSelect.value ? pivotColSelect.options[pivotColSelect.selectedIndex].textContent : '';
                 const aggKey = pivotAggSelect.value;
@@ -718,31 +875,7 @@
                 else if (aggKey === 'count') aggLabel = '件数';
                 else if (aggKey === 'average') aggLabel = '平均';
                 else aggLabel = aggKey;
-                // Parse headers
-                const headerRow = pivotTableEl.rows[0];
-                const colNames = [];
-                for (let i = 1; i < headerRow.cells.length; i++) {
-                    colNames.push(headerRow.cells[i].textContent.trim());
-                }
-                // Build columns
-                const pivotColumns = [];
-                pivotColumns.push({ title: rowFieldTitle, field: 'row', width: 150 });
-                colNames.forEach((name, idx) => {
-                    pivotColumns.push({ title: name, field: `col${idx}`, hozAlign: 'right', sorter: 'number' });
-                });
-                // Build data
-                const pivotData = [];
-                for (let r = 1; r < pivotTableEl.rows.length; r++) {
-                    const rowCells = pivotTableEl.rows[r].cells;
-                    const rowObj = {};
-                    rowObj['row'] = rowCells[0].textContent.trim();
-                    for (let c = 1; c < rowCells.length; c++) {
-                        const raw = rowCells[c].textContent.trim();
-                        const num = parseFloat(raw.replace(/,/g, ''));
-                        rowObj[`col${c-1}`] = isNaN(num) ? raw : num;
-                    }
-                    pivotData.push(rowObj);
-                }
+
                 // Create new tab
                 const newTabId = `tab${state.nextTabNumber++}`;
                 const newTabName = `ピボット${state.nextTabNumber - 1}`;
@@ -750,13 +883,15 @@
                 descriptionParts.push(`${rowFieldTitle}`);
                 if (colFieldTitle) descriptionParts.push(`×${colFieldTitle}`);
                 descriptionParts.push(`${aggLabel}`);
+
                 const newTab = {
                     id: newTabId,
                     name: newTabName,
                     description: descriptionParts.join(' '),
-                    tableState: { columns: pivotColumns, filter: [], sort: [] },
-                    data: pivotData
+                    isPivot: true, // Flag to identify pivot tabs
+                    pivotHTML: pivotHTML, // Store the generated HTML
                 };
+
                 state.tabs.push(newTab);
                 state.activeTabId = newTabId;
                 renderTabs();
@@ -779,4 +914,3 @@
 </body>
 
 </html>
-
