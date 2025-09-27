@@ -48,6 +48,45 @@
             font-size: 0.875rem;
             font-weight: 500;
             color: #4b5563;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .column-filter-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1.5rem;
+            height: 1.5rem;
+            border-radius: 0.375rem;
+            color: #9ca3af;
+            transition: background-color 0.2s ease, color 0.2s ease;
+        }
+
+        .column-filter-btn:hover {
+            background-color: #e5e7eb;
+            color: #1d4ed8;
+        }
+
+        .column-filter-btn.column-filter-btn-active {
+            color: #2563eb;
+        }
+
+        #column-filter-menu {
+            position: fixed;
+            z-index: 60;
+        }
+
+        #column-filter-menu.hidden {
+            display: none;
+        }
+
+        .column-filter-menu-panel {
+            width: 18rem;
+            max-height: 22rem;
+            display: flex;
+            flex-direction: column;
         }
 
         .tabulator .tabulator-row {
@@ -236,6 +275,31 @@
         </div>
     </div>
 
+    <!-- Column Filter Menu -->
+    <div id="column-filter-menu" class="hidden">
+        <div class="column-filter-menu-panel bg-white border border-gray-200 rounded-lg shadow-2xl">
+            <div class="flex items-center justify-between px-3 py-2 border-b border-gray-200">
+                <span class="text-sm font-semibold text-gray-700" data-role="title"></span>
+                <button type="button" data-role="close" class="text-gray-400 hover:text-gray-600">
+                    &times;
+                </button>
+            </div>
+            <div class="px-3 py-2 border-b border-gray-200 space-y-2">
+                <input type="text" data-role="search" class="w-full border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="値を検索" />
+                <label class="flex items-center gap-2 text-sm text-gray-700">
+                    <input type="checkbox" data-role="select-all" class="h-4 w-4 text-blue-600 border-gray-300 rounded" />
+                    <span>全て選択</span>
+                </label>
+            </div>
+            <div class="flex-1 overflow-y-auto px-3 py-2" data-role="options"></div>
+            <p class="px-3 text-xs text-gray-400 hidden" data-role="empty">一致する値がありません</p>
+            <div class="px-3 py-2 border-t border-gray-200 flex justify-end gap-2">
+                <button type="button" data-role="clear" class="px-3 py-1.5 text-sm text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200">クリア</button>
+                <button type="button" data-role="apply" class="px-3 py-1.5 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700">適用</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             // --- State Management ---
@@ -254,7 +318,7 @@
                 activeTabId: 'home',
                 nextTabNumber: 1,
                 tabs: [
-                    { id: 'home', name: 'ホーム', description: '新しいデータ操作を開始します', tableState: { columns: ALL_COLUMNS.slice(0, 5), filter: [], sort: [] } }
+                    { id: 'home', name: 'ホーム', description: '新しいデータ操作を開始します', tableState: { columns: ALL_COLUMNS.slice(0, 5), filter: [], sort: [], valueFilters: {} } }
                 ],
                 tableData: [
                     { id: 1, date: '2023-10-01', campaign: '秋のセール', impressions: 15000, clicks: 300, ctr: 0.02, cost: 50000, conversions: 10, media: 'Google' },
@@ -291,6 +355,21 @@
             const savePivotBtn = document.getElementById('save-pivot');
             const pivotResult = document.getElementById('pivot-result');
             const closePivotBtn = document.getElementById('close-pivot');
+            const filterMenuEl = document.getElementById('column-filter-menu');
+            const filterMenuTitle = filterMenuEl?.querySelector('[data-role="title"]');
+            const filterMenuOptions = filterMenuEl?.querySelector('[data-role="options"]');
+            const filterMenuSearch = filterMenuEl?.querySelector('[data-role="search"]');
+            const filterMenuSelectAll = filterMenuEl?.querySelector('[data-role="select-all"]');
+            const filterMenuApplyBtn = filterMenuEl?.querySelector('[data-role="apply"]');
+            const filterMenuClearBtn = filterMenuEl?.querySelector('[data-role="clear"]');
+            const filterMenuCloseBtn = filterMenuEl?.querySelector('[data-role="close"]');
+            const filterMenuEmptyMessage = filterMenuEl?.querySelector('[data-role="empty"]');
+
+            const FILTER_KEY_PREFIX = '__DF_FILTER__::';
+            const valueFilterState = {};
+            let valueFilterFunctions = {};
+            let filterMenuField = null;
+            let filterMenuCurrentButton = null;
 
             // --- Tabulator Initialization ---
             const table = new Tabulator("#data-table", {
@@ -304,9 +383,477 @@
                 initialFilter: [],
             });
 
+            // --- Column Filter Menu Helpers ---
+            function getFilterKey(value) {
+                if (value === null || value === undefined || value === '') {
+                    return `${FILTER_KEY_PREFIX}EMPTY`;
+                }
+                if (typeof value === 'number') {
+                    if (Number.isNaN(value)) {
+                        return `${FILTER_KEY_PREFIX}NUM_NAN`;
+                    }
+                    return `${FILTER_KEY_PREFIX}NUM:${value}`;
+                }
+                return `${FILTER_KEY_PREFIX}STR:${String(value)}`;
+            }
+
+            function describeValueFromKey(key) {
+                if (!key || !key.startsWith(FILTER_KEY_PREFIX)) {
+                    const text = key === undefined || key === null ? '（空白）' : String(key);
+                    return { display: text, value: key };
+                }
+                const body = key.slice(FILTER_KEY_PREFIX.length);
+                if (body === 'EMPTY') {
+                    return { display: '（空白）', value: '' };
+                }
+                if (body === 'NUM_NAN') {
+                    return { display: 'NaN', value: Number.NaN };
+                }
+                if (body.startsWith('NUM:')) {
+                    const raw = Number(body.slice(4));
+                    const formatted = Number.isFinite(raw) ? raw.toLocaleString('ja-JP') : body.slice(4);
+                    return { display: formatted, value: raw };
+                }
+                if (body.startsWith('STR:')) {
+                    const text = body.slice(4);
+                    return { display: text, value: text };
+                }
+                return { display: body, value: body };
+            }
+
+            function formatValueForDisplay(value) {
+                if (value === null || value === undefined || value === '') {
+                    return '（空白）';
+                }
+                if (typeof value === 'number') {
+                    if (Number.isNaN(value)) {
+                        return 'NaN';
+                    }
+                    return value.toLocaleString('ja-JP');
+                }
+                if (value instanceof Date && !Number.isNaN(value.getTime())) {
+                    return value.toISOString().split('T')[0];
+                }
+                return String(value);
+            }
+
+            function serializeValueFilters() {
+                const serialized = {};
+                Object.entries(valueFilterState).forEach(([field, set]) => {
+                    if (set instanceof Set) {
+                        serialized[field] = Array.from(set);
+                    }
+                });
+                return serialized;
+            }
+
+            function getFieldBasedFilters() {
+                const filters = table.getFilters(true) || [];
+                return filters.filter(filter => {
+                    if (!filter) return false;
+                    if (typeof filter === 'function') {
+                        return !filter.__isValueFilter;
+                    }
+                    if (filter.func && filter.func.__isValueFilter) {
+                        return false;
+                    }
+                    return Object.prototype.hasOwnProperty.call(filter, 'field');
+                });
+            }
+
+            function persistFilterStateToTab(tabId) {
+                if (!tabId) return;
+                const tab = state.tabs.find(t => t.id === tabId);
+                if (!tab || tab.isPivot) return;
+                tab.tableState = tab.tableState || {};
+                tab.tableState.filter = getFieldBasedFilters();
+                tab.tableState.valueFilters = serializeValueFilters();
+            }
+
+            function persistFilterStateToActiveTab() {
+                persistFilterStateToTab(state.activeTabId);
+            }
+
+            function createValueFilterFunction(field, set) {
+                const filterFn = function (data) {
+                    const key = getFilterKey(data[field]);
+                    return set.has(key);
+                };
+                filterFn.__isValueFilter = true;
+                filterFn.__valueField = field;
+                return filterFn;
+            }
+
+            function updateHeaderFilterIndicators() {
+                if (!filterMenuEl) return;
+                table.getColumns().forEach(column => {
+                    const headerEl = column.getElement();
+                    if (!headerEl) return;
+                    const btn = headerEl.querySelector('.column-filter-btn');
+                    if (!btn) return;
+                    const field = column.getField();
+                    const hasFilter = valueFilterState[field] instanceof Set;
+                    btn.classList.toggle('column-filter-btn-active', hasFilter);
+                });
+            }
+
+            function applyValueFilter(field, { persist = true } = {}) {
+                if (!field) return;
+                if (valueFilterFunctions[field]) {
+                    table.removeFilter(valueFilterFunctions[field]);
+                    delete valueFilterFunctions[field];
+                }
+                const selectedSet = valueFilterState[field];
+                if (!(selectedSet instanceof Set)) {
+                    if (persist) {
+                        persistFilterStateToActiveTab();
+                    }
+                    updateHeaderFilterIndicators();
+                    return;
+                }
+                const filterFn = createValueFilterFunction(field, selectedSet);
+                valueFilterFunctions[field] = filterFn;
+                table.addFilter(filterFn);
+                if (persist) {
+                    persistFilterStateToActiveTab();
+                }
+                updateHeaderFilterIndicators();
+            }
+
+            function removeValueFilter(field, { persist = true } = {}) {
+                if (!field) return;
+                if (valueFilterFunctions[field]) {
+                    table.removeFilter(valueFilterFunctions[field]);
+                    delete valueFilterFunctions[field];
+                }
+                if (valueFilterState[field]) {
+                    delete valueFilterState[field];
+                }
+                if (persist) {
+                    persistFilterStateToActiveTab();
+                }
+                updateHeaderFilterIndicators();
+            }
+
+            function clearAllValueFilters({ skipPersist = false } = {}) {
+                Object.values(valueFilterFunctions).forEach(fn => table.removeFilter(fn));
+                valueFilterFunctions = {};
+                Object.keys(valueFilterState).forEach(key => delete valueFilterState[key]);
+                if (!skipPersist) {
+                    persistFilterStateToActiveTab();
+                }
+                updateHeaderFilterIndicators();
+            }
+
+            function applyAllValueFilters({ persist = true } = {}) {
+                Object.values(valueFilterFunctions).forEach(fn => table.removeFilter(fn));
+                valueFilterFunctions = {};
+                Object.entries(valueFilterState).forEach(([field, set]) => {
+                    if (set instanceof Set) {
+                        const filterFn = createValueFilterFunction(field, set);
+                        valueFilterFunctions[field] = filterFn;
+                        table.addFilter(filterFn);
+                    }
+                });
+                if (persist) {
+                    persistFilterStateToActiveTab();
+                }
+                updateHeaderFilterIndicators();
+            }
+
+            function loadValueFiltersForTab(tab) {
+                Object.keys(valueFilterState).forEach(key => delete valueFilterState[key]);
+                if (!tab || tab.isPivot) {
+                    applyAllValueFilters({ persist: false });
+                    return;
+                }
+                const stored = tab.tableState?.valueFilters;
+                if (stored) {
+                    Object.entries(stored).forEach(([field, keys]) => {
+                        if (Array.isArray(keys)) {
+                            valueFilterState[field] = new Set(keys);
+                        }
+                    });
+                }
+                applyAllValueFilters({ persist: false });
+            }
+
+            function setupHeaderFilterButtons() {
+                if (!filterMenuEl) return;
+                table.getColumns().forEach(column => {
+                    const headerEl = column.getElement();
+                    if (!headerEl) return;
+                    const titleEl = headerEl.querySelector('.tabulator-col-title');
+                    if (!titleEl) return;
+                    let filterBtn = titleEl.querySelector('.column-filter-btn');
+                    if (!filterBtn) {
+                        filterBtn = document.createElement('button');
+                        filterBtn.type = 'button';
+                        filterBtn.className = 'column-filter-btn';
+                        filterBtn.innerHTML = '<svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M3 4h14l-5.5 6.5V16l-3-1.5v-4L3 4z"></path></svg>';
+                        filterBtn.addEventListener('click', (event) => {
+                            event.stopPropagation();
+                            event.preventDefault();
+                            openFilterMenu(column, filterBtn);
+                        });
+                        titleEl.appendChild(filterBtn);
+                    }
+                });
+                updateHeaderFilterIndicators();
+            }
+
+            function refreshHeaderFilterButtons() {
+                if (!filterMenuEl) return;
+                requestAnimationFrame(() => {
+                    setupHeaderFilterButtons();
+                });
+            }
+
+            function buildFilterMenuOptions(field) {
+                if (!filterMenuEl || !filterMenuOptions) return;
+                filterMenuOptions.innerHTML = '';
+                if (filterMenuEmptyMessage) {
+                    filterMenuEmptyMessage.classList.add('hidden');
+                }
+                const counts = new Map();
+                const rows = table.getData() || [];
+                rows.forEach(row => {
+                    const key = getFilterKey(row[field]);
+                    if (!counts.has(key)) {
+                        counts.set(key, { key, count: 0, display: formatValueForDisplay(row[field]) });
+                    }
+                    counts.get(key).count += 1;
+                });
+                const stored = valueFilterState[field];
+                if (stored instanceof Set) {
+                    stored.forEach(key => {
+                        if (!counts.has(key)) {
+                            const description = describeValueFromKey(key);
+                            counts.set(key, { key, count: 0, display: description.display });
+                        }
+                    });
+                }
+                const options = Array.from(counts.values()).sort((a, b) => a.display.localeCompare(b.display, 'ja', { numeric: true, sensitivity: 'base' }));
+                options.forEach(option => {
+                    const label = document.createElement('label');
+                    label.className = 'flex items-center gap-2 py-1 text-sm text-gray-700';
+                    label.dataset.valueKey = option.key;
+                    label.dataset.label = option.display.toLowerCase();
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.className = 'filter-option-checkbox h-4 w-4 text-blue-600 border-gray-300 rounded';
+                    checkbox.dataset.valueKey = option.key;
+                    const currentSet = valueFilterState[field];
+                    checkbox.checked = currentSet instanceof Set ? currentSet.has(option.key) : true;
+                    const valueSpan = document.createElement('span');
+                    valueSpan.className = 'flex-1 truncate';
+                    valueSpan.textContent = option.display;
+                    const countSpan = document.createElement('span');
+                    countSpan.className = 'text-xs text-gray-400';
+                    countSpan.textContent = `(${option.count})`;
+                    label.appendChild(checkbox);
+                    label.appendChild(valueSpan);
+                    label.appendChild(countSpan);
+                    filterMenuOptions.appendChild(label);
+                });
+                if (options.length === 0 && filterMenuEmptyMessage) {
+                    filterMenuEmptyMessage.classList.remove('hidden');
+                }
+                updateSelectAllState();
+            }
+
+            function positionFilterMenu(triggerEl) {
+                if (!filterMenuEl) return;
+                const panel = filterMenuEl.querySelector('.column-filter-menu-panel');
+                if (!panel || !triggerEl) return;
+                const triggerRect = triggerEl.getBoundingClientRect();
+                const panelRect = panel.getBoundingClientRect();
+                const padding = 12;
+                let left = triggerRect.left;
+                let top = triggerRect.bottom + 4;
+                if (left + panelRect.width > window.innerWidth - padding) {
+                    left = window.innerWidth - panelRect.width - padding;
+                }
+                if (left < padding) left = padding;
+                if (top + panelRect.height > window.innerHeight - padding) {
+                    top = triggerRect.top - panelRect.height - 4;
+                }
+                if (top < padding) top = padding;
+                filterMenuEl.style.left = `${left}px`;
+                filterMenuEl.style.top = `${top}px`;
+            }
+
+            function closeFilterMenu() {
+                if (!filterMenuEl) return;
+                if (!filterMenuEl.classList.contains('hidden')) {
+                    filterMenuEl.classList.add('hidden');
+                }
+                filterMenuEl.style.left = '';
+                filterMenuEl.style.top = '';
+                if (filterMenuOptions) {
+                    filterMenuOptions.innerHTML = '';
+                }
+                if (filterMenuSearch) {
+                    filterMenuSearch.value = '';
+                }
+                if (filterMenuEmptyMessage) {
+                    filterMenuEmptyMessage.classList.add('hidden');
+                }
+                if (filterMenuSelectAll) {
+                    filterMenuSelectAll.checked = true;
+                    filterMenuSelectAll.indeterminate = false;
+                }
+                filterMenuField = null;
+                filterMenuCurrentButton = null;
+            }
+
+            function openFilterMenu(column, triggerEl) {
+                if (!filterMenuEl) return;
+                const field = column.getField();
+                if (!field) return;
+
+                if (!filterMenuEl.classList.contains('hidden') && filterMenuField === field) {
+                    closeFilterMenu();
+                    return;
+                }
+
+                closeFilterMenu();
+                filterMenuField = field;
+                filterMenuCurrentButton = triggerEl;
+
+                if (filterMenuTitle) {
+                    const definition = column.getDefinition();
+                    const title = definition?.title || field;
+                    filterMenuTitle.textContent = `${title} のフィルタ`;
+                }
+
+                buildFilterMenuOptions(field);
+                filterMenuEl.classList.remove('hidden');
+
+                requestAnimationFrame(() => {
+                    positionFilterMenu(triggerEl || filterMenuCurrentButton);
+                    if (filterMenuSearch) {
+                        filterMenuSearch.focus();
+                        filterMenuSearch.select();
+                    }
+                });
+            }
+
+            function updateSelectAllState() {
+                if (!filterMenuSelectAll || !filterMenuOptions) return;
+                const checkboxes = filterMenuOptions.querySelectorAll('.filter-option-checkbox');
+                if (checkboxes.length === 0) {
+                    filterMenuSelectAll.checked = false;
+                    filterMenuSelectAll.indeterminate = false;
+                    return;
+                }
+                let checkedCount = 0;
+                checkboxes.forEach(cb => {
+                    if (cb.checked) checkedCount += 1;
+                });
+                if (checkedCount === 0) {
+                    filterMenuSelectAll.checked = false;
+                    filterMenuSelectAll.indeterminate = false;
+                } else if (checkedCount === checkboxes.length) {
+                    filterMenuSelectAll.checked = true;
+                    filterMenuSelectAll.indeterminate = false;
+                } else {
+                    filterMenuSelectAll.checked = false;
+                    filterMenuSelectAll.indeterminate = true;
+                }
+            }
+
+            // --- Column Filter Menu Events ---
+            filterMenuSelectAll?.addEventListener('change', (event) => {
+                if (!filterMenuOptions) return;
+                const targetChecked = event.target.checked;
+                const checkboxes = filterMenuOptions.querySelectorAll('.filter-option-checkbox');
+                checkboxes.forEach(cb => {
+                    cb.checked = targetChecked;
+                });
+                filterMenuSelectAll.indeterminate = false;
+            });
+
+            filterMenuOptions?.addEventListener('change', (event) => {
+                if (event.target.classList.contains('filter-option-checkbox')) {
+                    updateSelectAllState();
+                }
+            });
+
+            filterMenuApplyBtn?.addEventListener('click', () => {
+                if (!filterMenuField || !filterMenuOptions) {
+                    closeFilterMenu();
+                    return;
+                }
+                const checkboxes = filterMenuOptions.querySelectorAll('.filter-option-checkbox');
+                const selectedKeys = Array.from(checkboxes)
+                    .filter(cb => cb.checked)
+                    .map(cb => cb.dataset.valueKey);
+                if (selectedKeys.length === checkboxes.length) {
+                    removeValueFilter(filterMenuField);
+                } else {
+                    valueFilterState[filterMenuField] = new Set(selectedKeys);
+                    applyValueFilter(filterMenuField);
+                }
+                closeFilterMenu();
+            });
+
+            filterMenuClearBtn?.addEventListener('click', () => {
+                if (filterMenuField) {
+                    removeValueFilter(filterMenuField);
+                }
+                closeFilterMenu();
+            });
+
+            filterMenuCloseBtn?.addEventListener('click', () => {
+                closeFilterMenu();
+            });
+
+            filterMenuSearch?.addEventListener('input', () => {
+                if (!filterMenuOptions) return;
+                const query = filterMenuSearch.value.trim().toLowerCase();
+                let visibleCount = 0;
+                filterMenuOptions.querySelectorAll('[data-value-key]').forEach(optionEl => {
+                    const labelText = optionEl.dataset.label || '';
+                    if (!query || labelText.includes(query)) {
+                        optionEl.classList.remove('hidden');
+                        visibleCount += 1;
+                    } else {
+                        optionEl.classList.add('hidden');
+                    }
+                });
+                if (filterMenuEmptyMessage) {
+                    filterMenuEmptyMessage.classList.toggle('hidden', visibleCount !== 0);
+                }
+            });
+
+            document.addEventListener('click', (event) => {
+                if (!filterMenuEl || filterMenuEl.classList.contains('hidden')) return;
+                if (filterMenuEl.contains(event.target)) return;
+                if (event.target.closest('.column-filter-btn')) return;
+                closeFilterMenu();
+            });
+
+            document.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape' && filterMenuEl && !filterMenuEl.classList.contains('hidden')) {
+                    closeFilterMenu();
+                }
+            });
+
+            window.addEventListener('resize', () => {
+                if (filterMenuEl && !filterMenuEl.classList.contains('hidden')) {
+                    closeFilterMenu();
+                }
+            });
+
             // --- Core Functions ---
             function updateActiveTab(tabId, isInitialLoad = false) {
+                const previousTabId = state.activeTabId;
+                if (previousTabId && previousTabId !== tabId) {
+                    persistFilterStateToTab(previousTabId);
+                }
                 state.activeTabId = tabId;
+                closeFilterMenu();
                 const activeTab = state.tabs.find(t => t.id === tabId);
                 if (!activeTab) return;
 
@@ -314,6 +861,8 @@
                 const pivotDisplayContainer = document.getElementById('pivot-table-display');
                 const columnListAside = document.querySelector('aside');
                 const mainGrid = document.getElementById('main-grid');
+
+                clearAllValueFilters({ skipPersist: true });
 
                 if (activeTab.isPivot) {
                     // It's a pivot tab
@@ -349,15 +898,20 @@
                         table.setSort(activeTab.tableState.sort || []);
                         table.setFilter(activeTab.tableState.filter || []);
                     }
-                    
+
                     // Refresh column list based on current table
                     renderColumns();
+                    loadValueFiltersForTab(activeTab);
+                    refreshHeaderFilterButtons();
                 }
 
                 if (!isInitialLoad) {
                     renderTabs();
                 }
                 updateTabHeader();
+                if (activeTab.isPivot) {
+                    refreshHeaderFilterButtons();
+                }
             }
 
             // Formatter for delete buttons in headers
@@ -383,6 +937,7 @@
                 if (columnDef && !table.getColumns().some(c => c.getField() === columnDef.field)) {
                     table.addColumn(columnDef, false);
                     renderColumns();
+                    refreshHeaderFilterButtons();
                 }
             }
 
@@ -392,7 +947,8 @@
                 activeTab.tableState = {
                     columns: table.getColumnDefinitions(),
                     sort: table.getSorters(),
-                    filter: table.getFilters(true),
+                    filter: getFieldBasedFilters(),
+                    valueFilters: serializeValueFilters(),
                 };
             }
 
@@ -494,6 +1050,7 @@
                 });
                 addColumnDragListeners();
                 addColumnButtonListeners();
+                refreshHeaderFilterButtons();
             }
 
             // Event listeners for column drag and drop
@@ -522,6 +1079,9 @@
                         const field = e.target.dataset.field;
                         table.deleteColumn(field);
                         renderColumns();
+                        removeValueFilter(field);
+                        refreshHeaderFilterButtons();
+                        closeFilterMenu();
                     }
                 });
             }
@@ -534,6 +1094,9 @@
                     if (field) {
                         table.deleteColumn(field);
                         renderColumns();
+                        removeValueFilter(field);
+                        refreshHeaderFilterButtons();
+                        closeFilterMenu();
                     }
                 }
             });
@@ -640,7 +1203,8 @@
                     const currentTableState = {
                         columns: table.getColumnDefinitions(),
                         sort: table.getSorters(),
-                        filter: table.getFilters(true),
+                        filter: getFieldBasedFilters(),
+                        valueFilters: serializeValueFilters(),
                     };
                     const newTabId = `tab${state.nextTabNumber++}`;
                     const newTabName = `タブ${state.nextTabNumber - 1}`;
@@ -654,8 +1218,7 @@
                     state.tabs.push(newTab);
                     // ホームの状態をリセット
                     const homeTab = state.tabs.find(t => t.id === 'home');
-                    homeTab.tableState = { columns: [], filter: [], sort: [] };
-                    state.activeTabId = newTabId;
+                    homeTab.tableState = { columns: [], filter: [], sort: [], valueFilters: {} };
                     // 新しいタブに即切り替え
                     updateActiveTab(newTabId);
                 } else {
@@ -890,7 +1453,6 @@
                 };
 
                 state.tabs.push(newTab);
-                state.activeTabId = newTabId;
                 renderTabs();
                 updateActiveTab(newTabId);
                 // Close modal
